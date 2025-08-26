@@ -4,9 +4,9 @@ export const KSEG1 = 0xa0000000; // 0xa0000000-0xbfffffff (uncached kernel)
 
 export function toPhysical(addr: number): number {
   addr >>>= 0;
-  if ((addr & 0xe0000000) === KSEG0) return addr & 0x1fffffff; // cached, mirror
-  if ((addr & 0xe0000000) === KSEG1) return addr & 0x1fffffff; // uncached, mirror
-  return addr & 0x7fffffff; // kuseg
+  const seg = addr >>> 29; // top 3 bits
+  if (seg === 0b100 || seg === 0b101) return addr & 0x1fffffff; // KSEG0/1 mirror
+  return addr & 0x7fffffff; // KUSEG (and others not used)
 }
 
 export interface BIOSProvider {
