@@ -1,0 +1,33 @@
+# See https://github.com/github/gitignore/blob/main/Node.gitignore
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Production
+build/
+dist/
+
+# Testing
+coverage/
+.vitest/
+.playwright/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.*
+.env.local
+
+# Assets
+assets/
+!assets/.keep
+

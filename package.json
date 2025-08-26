@@ -1,0 +1,26 @@
+{
+  "name": "ai-psx-gpt5",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Headless, accuracy-focused PlayStation 1 emulator in TypeScript with automated testing and Chrome host.",
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "scripts": {
+    "build": "npm run -ws build",
+    "test": "npm run -ws test",
+    "test:coverage": "npm run -ws test:coverage",
+    "lint": "npm run -ws lint",
+    "format": "npm run -ws format",
+    "e2e": "npm run -ws e2e"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*",
+    "tests/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
