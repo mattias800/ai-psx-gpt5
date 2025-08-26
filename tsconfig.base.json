@@ -15,7 +15,11 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@ai-psx/shared": ["packages/emulator-shared/src/index.ts"]
+    }
   },
   "include": []
 }
