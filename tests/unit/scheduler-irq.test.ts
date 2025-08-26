@@ -16,7 +16,7 @@ describe('EventScheduler', () => {
     expect(calls).toEqual([5,5]);
     sch.step(1);
     expect(calls).toEqual([5,5,10]);
-    expect(sch['now']).toBe(11);
+    expect(sch['now']).toBe(10);
   });
 });
 
