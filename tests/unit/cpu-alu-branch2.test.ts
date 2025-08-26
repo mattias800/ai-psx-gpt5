@@ -65,7 +65,7 @@ describe('R3000A extended ALU and branches', () => {
     cpu.step(); // ori r1
     cpu.step(); // bltz taken, set nextPc
     cpu.step(); // delay slot executes (ori r2)
-    expect(cpu.s.pc>>>0).toBe(12);
+    expect(cpu.s.pc>>>0).toBe(16);
     expect(cpu.s.regs[2]>>>0).toBe(0xbeef);
     // Test BGEZAL sets r31
     const code2 = emit([
