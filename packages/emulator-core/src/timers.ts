@@ -7,7 +7,7 @@ export class HWTimer {
   mode = 0; // bit flags placeholder
   irq = false;
 
-  constructor(private sch: EventScheduler, private clockDiv: number = 1) {}
+  constructor(private sch: EventScheduler, private clockDiv: number = 1, private onIrq?: () => void) {}
 
   writeCount(v: number) { this.count = v & 0xffff; }
   writeTarget(v: number) { this.target = v & 0xffff; }
@@ -22,6 +22,7 @@ export class HWTimer {
     let c = (before + inc) & 0xffff;
     if (before <= this.target && c > this.target) {
       this.irq = true;
+      if (this.onIrq) this.onIrq();
     }
     this.count = c;
   }
