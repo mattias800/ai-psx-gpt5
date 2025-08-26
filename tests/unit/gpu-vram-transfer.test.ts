@@ -22,7 +22,7 @@ describe('GPU VRAM image load/store via IOHub', () => {
       0x1001, 0x1002, 0x1003,
     ];
     // Issue GP0 A0 (Image Load) sequence: cmd, XY, Size, then packed pixel words
-    as.write32(0x1f801810, 0x000000a0);
+    as.write32(0x1f801810, (0xa0 << 24) >>> 0);
     as.write32(0x1f801810, ((y & 0x1ff) << 16) | (x & 0x3ff));
     as.write32(0x1f801810, ((h & 0x1ff) << 16) | (w & 0x3ff));
     // Pack pixels two per word (low, high)
@@ -35,7 +35,7 @@ describe('GPU VRAM image load/store via IOHub', () => {
     for (const w32 of words) as.write32(0x1f801810, w32 >>> 0);
 
     // Now request Image Store (C0) for same rect and read back
-    as.write32(0x1f801810, 0x000000c0);
+    as.write32(0x1f801810, (0xc0 << 24) >>> 0);
     as.write32(0x1f801810, ((y & 0x1ff) << 16) | (x & 0x3ff));
     as.write32(0x1f801810, ((h & 0x1ff) << 16) | (w & 0x3ff));
 

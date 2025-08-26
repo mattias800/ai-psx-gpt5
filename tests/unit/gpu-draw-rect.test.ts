@@ -7,7 +7,7 @@ describe('GPU draw rect (0x64)', () => {
     const x = 100, y = 50, w = 2, h = 2;
     const color24 = 0x00ff00; // R=0,G=255,B=0 -> BGR555 = 0x03E0
     // GP0 0x64 flow: cmd=color, then XY, Size
-    gpu.writeGP0((0x64) | (color24 & 0xffffff));
+    gpu.writeGP0((0x64 << 24) | (color24 & 0xffffff));
     gpu.writeGP0(((y & 0x1ff) << 16) | (x & 0x3ff));
     gpu.writeGP0(((h & 0x1ff) << 16) | (w & 0x3ff));
 

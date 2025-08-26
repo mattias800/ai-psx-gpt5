@@ -15,8 +15,8 @@ export class GPU {
   writeGP0(val: number) {
     val >>>= 0;
     if (this.inCmd === 0) {
-      // Start of a new command
-      this.inCmd = val & 0xff;
+      // Start of a new command (opcode in high 8 bits)
+      this.inCmd = (val >>> 24) & 0xff;
       this.parms.length = 0;
       switch (this.inCmd) {
         case 0x00: // NOP
@@ -33,7 +33,7 @@ export class GPU {
           break;
         case 0x64: // Rectangle (variable) filled, opaque
           this.parmWordsNeeded = 2; // xy, size (color was the command word)
-          this.parms.push(val); // store color as parms[0] for convenience
+          this.parms.push(val & 0x00ffffff); // store color as parms[0]
           break;
         default:
           // Unimplemented GP0 command; ignore for now
@@ -58,7 +58,7 @@ export class GPU {
           this.imageStoreQueue = this.readRectToWords(x, y, w, h);
           this.inCmd = 0; // No payload for store; GPUREAD will fetch
         } else if (this.inCmd === 0x64) {
-          const color = this.parms[0] >>> 0;
+          const color = this.parms[0] >>> 0; // color from first word's low 24 bits
           const xy = this.parms[1] >>> 0;
           const size = this.parms[2] >>> 0;
           const { x, y } = this.decodeXY(xy);

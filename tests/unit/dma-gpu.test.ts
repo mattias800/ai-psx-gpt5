@@ -24,7 +24,7 @@ describe('DMAController -> GPU GP0 streaming', () => {
     const x = 5, y = 6, w = 2, h = 2;
     const pixels = [0x00aa, 0x00bb, 0x00cc, 0x00dd];
     const words: number[] = [
-      0x000000a0,
+      (0xa0 << 24) >>> 0,
       ((y & 0x1ff) << 16) | (x & 0x3ff),
       ((h & 0x1ff) << 16) | (w & 0x3ff),
       (pixels[1] << 16) | pixels[0],
@@ -40,7 +40,7 @@ describe('DMAController -> GPU GP0 streaming', () => {
     dma.transferToGPU(base, words.length);
 
     // Read back via Image Store
-    as.write32(0x1f801810, 0x000000c0);
+    as.write32(0x1f801810, (0xc0 << 24) >>> 0);
     as.write32(0x1f801810, ((y & 0x1ff) << 16) | (x & 0x3ff));
     as.write32(0x1f801810, ((h & 0x1ff) << 16) | (w & 0x3ff));
     const out0 = as.read32(0x1f801810) >>> 0;
