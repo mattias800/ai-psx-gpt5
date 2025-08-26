@@ -112,6 +112,15 @@ export class R3000A {
           case 0x03: // SRA
             writeReg(rd, r[rt] >> sh);
             break;
+          case 0x04: // SLLV
+            writeReg(rd, r[rt] << (r[rs] & 31));
+            break;
+          case 0x06: // SRLV
+            writeReg(rd, r[rt] >>> (r[rs] & 31));
+            break;
+          case 0x07: // SRAV
+            writeReg(rd, r[rt] >> (r[rs] & 31));
+            break;
           case 0x08: // JR
             this.s.nextPc = r[rs] >>> 0; // delay slot already scheduled
             break;
@@ -248,6 +257,22 @@ export class R3000A {
       case 0x07: // BGTZ
         if (r[rs] > 0) this.s.nextPc = (this.s.pc + ((simm << 2) | 0)) >>> 0;
         break;
+      case 0x01: { // REGIMM group
+        const rtField = (instr >>> 16) & 31;
+        const offset = (simm << 2) | 0;
+        if (rtField === 0x00) { // BLTZ
+          if (r[rs] < 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
+        } else if (rtField === 0x01) { // BGEZ
+          if (r[rs] >= 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
+        } else if (rtField === 0x10) { // BLTZAL
+          writeReg(31, this.s.pc);
+          if (r[rs] < 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
+        } else if (rtField === 0x11) { // BGEZAL
+          writeReg(31, this.s.pc);
+          if (r[rs] >= 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
+        }
+        break;
+      }
       case 0x08: // ADDI
         writeReg(rt, (r[rs] + simm) | 0);
         break;
@@ -262,6 +287,9 @@ export class R3000A {
         break;
       case 0x0e: // XORI
         writeReg(rt, r[rs] ^ (imm >>> 0));
+        break;
+      case 0x0f: // LUI
+        writeReg(rt, (imm << 16) | 0);
         break;
       case 0x0a: // SLTI
         writeReg(rt, r[rs] < simm ? 1 : 0);
