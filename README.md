@@ -9,3 +9,6 @@ Accuracy-focused, headless PlayStation 1 emulator written in TypeScript. All ver
 
 Legal: BIOS and game images are not included. CI can optionally fetch them from user-provided URLs via secrets with SHA-256 verification.
 
+Documentation
+- GTE model: docs/GTE.md
+

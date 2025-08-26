@@ -12,6 +12,13 @@ export class GPU {
   private imageWordsRemaining = 0; // words remaining for image load/store
   private imageStoreQueue: number[] = []; // queue for GPUREAD on image store
 
+  // Drawing state (simplified)
+  private clipLeft = 0; private clipTop = 0; private clipRight = 1023; private clipBottom = 511;
+  private drawOffX = 0; private drawOffY = 0;
+  private texBaseX = 0; private texBaseY = 0;
+  private texAddrWrap = false; // false = clamp, true = wrap
+  private texW = 256; private texH = 256;
+
   writeGP0(val: number) {
     val >>>= 0;
     if (this.inCmd === 0) {
@@ -34,6 +41,37 @@ export class GPU {
         case 0x64: // Rectangle (variable) filled, opaque
           this.parmWordsNeeded = 2; // xy, size (color was the command word)
           this.parms.push(val & 0x00ffffff); // store color as parms[0]
+          break;
+        case 0x20: // Triangle (monochrome, opaque) - simplified
+          this.parmWordsNeeded = 3; // xy1, xy2, xy3 (color was the command word)
+          this.parms.push(val & 0x00ffffff); // store color as parms[0]
+          break;
+        case 0x30: // Triangle (Gouraud shaded, opaque) - simplified
+          this.parmWordsNeeded = 5; // xy1, color2, xy2, color3, xy3 (color1 was the command word)
+          this.parms.push(val & 0x00ffffff);
+          break;
+        case 0x24: // Triangle (textured, opaque, simple 16bpp)
+          this.parmWordsNeeded = 6; // xy1, uv1, xy2, uv2, xy3, uv3 (color in cmd)
+          this.parms.push(val & 0x00ffffff);
+          break;
+        case 0x34: // Triangle (textured + Gouraud, opaque) - simplified
+          this.parmWordsNeeded = 8; // xy1, uv1, color2, xy2, uv2, color3, xy3, uv3 (color1 in cmd)
+          this.parms.push(val & 0x00ffffff);
+          break;
+        case 0xe1: // Set texture base (xy follows)
+          this.parmWordsNeeded = 1;
+          break;
+        case 0xe3: // Set draw area top-left (xy follows)
+          this.parmWordsNeeded = 1;
+          break;
+        case 0xe4: // Set draw area bottom-right (xy follows)
+          this.parmWordsNeeded = 1;
+          break;
+        case 0xe5: // Set drawing offset (xy follows)
+          this.parmWordsNeeded = 1;
+          break;
+        case 0xe6: // Set texture addressing mode and size (conf follows)
+          this.parmWordsNeeded = 1;
           break;
         default:
           // Unimplemented GP0 command; ignore for now
@@ -66,6 +104,74 @@ export class GPU {
           this.fillRect(x, y, w, h, color);
           this.inCmd = 0;
           this.parms.length = 0;
+        } else if (this.inCmd === 0x20) {
+          const color = this.parms[0] >>> 0;
+          const xy1 = this.parms[1] >>> 0;
+          const xy2 = this.parms[2] >>> 0;
+          const xy3 = this.parms[3] >>> 0;
+          const p1 = this.decodeXY(xy1); const p2 = this.decodeXY(xy2); const p3 = this.decodeXY(xy3);
+          this.fillTri(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, color);
+          this.inCmd = 0;
+          this.parms.length = 0;
+        } else if (this.inCmd === 0x30) {
+          const c1 = this.parms[0] >>> 0;
+          const xy1 = this.parms[1] >>> 0;
+          const c2 = this.parms[2] >>> 0;
+          const xy2 = this.parms[3] >>> 0;
+          const c3 = this.parms[4] >>> 0;
+          const xy3 = this.parms[5] >>> 0;
+          const p1 = this.decodeXY(xy1); const p2 = this.decodeXY(xy2); const p3 = this.decodeXY(xy3);
+          this.fillTriGouraud(p1.x, p1.y, c1, p2.x, p2.y, c2, p3.x, p3.y, c3);
+          this.inCmd = 0;
+          this.parms.length = 0;
+        } else if (this.inCmd === 0x24) {
+          const _col = this.parms[0] >>> 0;
+          const xy1 = this.parms[1] >>> 0; const uv1 = this.parms[2] >>> 0;
+          const xy2 = this.parms[3] >>> 0; const uv2 = this.parms[4] >>> 0;
+          const xy3 = this.parms[5] >>> 0; const uv3 = this.parms[6] >>> 0;
+          const p1 = this.decodeXY(xy1); const p2 = this.decodeXY(xy2); const p3 = this.decodeXY(xy3);
+          const u1 = uv1 & 0xff, v1 = (uv1 >>> 8) & 0xff;
+          const u2 = uv2 & 0xff, v2 = (uv2 >>> 8) & 0xff;
+          const u3 = uv3 & 0xff, v3 = (uv3 >>> 8) & 0xff;
+          this.fillTriTextured(p1.x,p1.y,u1,v1, p2.x,p2.y,u2,v2, p3.x,p3.y,u3,v3, _col);
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0x34) {
+          const c1 = this.parms[0] >>> 0;
+          const xy1 = this.parms[1] >>> 0; const uv1 = this.parms[2] >>> 0;
+          const c2 = this.parms[3] >>> 0; const xy2 = this.parms[4] >>> 0; const uv2 = this.parms[5] >>> 0;
+          const c3 = this.parms[6] >>> 0; const xy3 = this.parms[7] >>> 0; const uv3 = this.parms[8] >>> 0;
+          const p1 = this.decodeXY(xy1), p2 = this.decodeXY(xy2), p3 = this.decodeXY(xy3);
+          const u1 = uv1 & 0xff, v1 = (uv1>>>8)&0xff;
+          const u2 = uv2 & 0xff, v2 = (uv2>>>8)&0xff;
+          const u3 = uv3 & 0xff, v3 = (uv3>>>8)&0xff;
+          this.fillTriTexturedGouraud(
+            p1.x,p1.y,u1,v1,c1,
+            p2.x,p2.y,u2,v2,c2,
+            p3.x,p3.y,u3,v3,c3
+          );
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0xe1) {
+          const xy = this.parms[0] >>> 0; const { x, y } = this.decodeXY(xy);
+          this.texBaseX = x; this.texBaseY = y;
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0xe3) {
+          const xy = this.parms[0] >>> 0; const { x, y } = this.decodeXY(xy);
+          this.clipLeft = x; this.clipTop = y;
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0xe4) {
+          const xy = this.parms[0] >>> 0; const { x, y } = this.decodeXY(xy);
+          this.clipRight = x; this.clipBottom = y;
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0xe5) {
+          const xy = this.parms[0] >>> 0; const { x, y } = this.decodeXY(xy);
+          this.drawOffX = x | 0; this.drawOffY = y | 0;
+          this.inCmd = 0; this.parms.length = 0;
+        } else if (this.inCmd === 0xe6) {
+          const conf = this.parms[0] >>> 0;
+          this.texAddrWrap = (conf & 0x1) !== 0;
+          this.texW = (((conf >>> 8) & 0xff) + 1) | 0;
+          this.texH = (((conf >>> 16) & 0xff) + 1) | 0;
+          this.inCmd = 0; this.parms.length = 0;
         }
       }
       return;
@@ -150,11 +256,16 @@ export class GPU {
     const g = (color24 >>> 8) & 0xff;
     const b = (color24 >>> 16) & 0xff;
     const bgr555 = ((r >>> 3) << 10) | ((g >>> 3) << 5) | (b >>> 3);
-    for (let j = 0; j < h; j++) {
-      const vy = (y + j) & 0x1ff;
-      for (let i = 0; i < w; i++) {
-        const vx = (x + i) & 0x3ff;
-        this.vram[this.vramIndex(vx, vy)] = bgr555 & 0xffff;
+    const ox = this.drawOffX | 0; const oy = this.drawOffY | 0;
+    const sx = (x + ox) | 0; const sy = (y + oy) | 0;
+    const x0 = Math.max(this.clipLeft, sx);
+    const y0 = Math.max(this.clipTop, sy);
+    const x1 = Math.min(this.clipRight, sx + Math.max(0, w - 1));
+    const y1 = Math.min(this.clipBottom, sy + Math.max(0, h - 1));
+    if (x1 < x0 || y1 < y0) return;
+    for (let yy = y0; yy <= y1; yy++) {
+      for (let xx = x0; xx <= x1; xx++) {
+        this.vram[this.vramIndex(xx & 0x3ff, yy & 0x1ff)] = bgr555 & 0xffff;
       }
     }
   }
@@ -200,6 +311,211 @@ export class GPU {
       pi += 2;
     }
     return out;
+  }
+
+  private fillTri(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, color24: number) {
+    // Convert 24-bit RGB to BGR555
+    const r = (color24) & 0xff;
+    const g = (color24 >>> 8) & 0xff;
+    const b = (color24 >>> 16) & 0xff;
+    const bgr555 = ((r >>> 3) << 10) | ((g >>> 3) << 5) | (b >>> 3);
+
+    // Apply drawing offset
+    const ox = this.drawOffX | 0, oy = this.drawOffY | 0;
+    x1 = (x1 + ox) | 0; y1 = (y1 + oy) | 0;
+    x2 = (x2 + ox) | 0; y2 = (y2 + oy) | 0;
+    x3 = (x3 + ox) | 0; y3 = (y3 + oy) | 0;
+
+    // Bounding box with clip
+    let minX = Math.max(this.clipLeft, Math.min(x1, x2, x3));
+    let maxX = Math.min(this.clipRight, Math.max(x1, x2, x3));
+    let minY = Math.max(this.clipTop, Math.min(y1, y2, y3));
+    let maxY = Math.min(this.clipBottom, Math.max(y1, y2, y3));
+
+    // Edge function helpers
+    const edge = (ax: number, ay: number, bx: number, by: number, px: number, py: number) => {
+      return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+    };
+
+    // Determine winding; for simplicity, fill when all edge funcs have same sign or zero
+    const area = edge(x1,y1,x2,y2,x3,y3);
+    if (area === 0) return; // degenerate
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const w0 = edge(x2,y2,x3,y3,x,y);
+        const w1 = edge(x3,y3,x1,y1,x,y);
+        const w2 = edge(x1,y1,x2,y2,x,y);
+        if (area > 0) {
+          if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+            this.vram[this.vramIndex(x, y)] = bgr555 & 0xffff;
+          }
+        } else {
+          if (w0 <= 0 && w1 <= 0 && w2 <= 0) {
+            this.vram[this.vramIndex(x, y)] = bgr555 & 0xffff;
+          }
+        }
+      }
+    }
+  }
+
+  private fillTriTextured(x1:number,y1:number,u1:number,v1:number,x2:number,y2:number,u2:number,v2:number,x3:number,y3:number,u3:number,v3:number, color24:number) {
+    // Apply offset
+    const ox = this.drawOffX | 0, oy = this.drawOffY | 0;
+    x1 = (x1 + ox) | 0; y1 = (y1 + oy) | 0;
+    x2 = (x2 + ox) | 0; y2 = (y2 + oy) | 0;
+    x3 = (x3 + ox) | 0; y3 = (y3 + oy) | 0;
+
+    const minX = Math.max(this.clipLeft, Math.min(x1, x2, x3));
+    const maxX = Math.min(this.clipRight, Math.max(x1, x2, x3));
+    const minY = Math.max(this.clipTop, Math.min(y1, y2, y3));
+    const maxY = Math.min(this.clipBottom, Math.max(y1, y2, y3));
+
+    const edge = (ax:number,ay:number,bx:number,by:number,px:number,py:number)=> (px-ax)*(by-ay) - (py-ay)*(bx-ax);
+    const area = edge(x1,y1,x2,y2,x3,y3);
+    if (area === 0) return;
+
+    const cr = color24 & 0xff;
+    const cg = (color24 >>> 8) & 0xff;
+    const cb = (color24 >>> 16) & 0xff;
+
+    for (let y=minY; y<=maxY; y++) {
+      for (let x=minX; x<=maxX; x++) {
+        const w0 = edge(x2,y2,x3,y3,x,y);
+        const w1 = edge(x3,y3,x1,y1,x,y);
+        const w2 = edge(x1,y1,x2,y2,x,y);
+        if ((area > 0 && w0 >= 0 && w1 >= 0 && w2 >= 0) || (area < 0 && w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+          const f0 = w0/area, f1 = w1/area, f2 = w2/area;
+          const uu = Math.round(u1*f0 + u2*f1 + u3*f2) & 0x3ff;
+          const vv = Math.round(v1*f0 + v2*f1 + v3*f2) & 0x1ff;
+          let U = uu | 0, V = vv | 0;
+          if (this.texAddrWrap) {
+            U = ((U % this.texW) + this.texW) % this.texW;
+            V = ((V % this.texH) + this.texH) % this.texH;
+          } else {
+            if (U < 0) U = 0; else if (U >= this.texW) U = this.texW - 1;
+            if (V < 0) V = 0; else if (V >= this.texH) V = this.texH - 1;
+          }
+          const sx = (this.texBaseX + U) & 0x3ff; const sy = (this.texBaseY + V) & 0x1ff;
+          const tex = this.vram[this.vramIndex(sx, sy)] & 0xffff;
+
+          if (color24 === 0) {
+            // Preserve legacy behavior: write raw texel
+            this.vram[this.vramIndex(x,y)] = tex;
+          } else {
+            // Expand 5-bit to 8-bit approx
+            const tr = (tex>>>10)&0x1f, tg=(tex>>>5)&0x1f, tb=tex&0x1f;
+            const Tr = (tr<<3)|(tr>>>2), Tg=(tg<<3)|(tg>>>2), Tb=(tb<<3)|(tb>>>2);
+            const R = Math.min(255, ((Tr * cr) / 255) | 0);
+            const G = Math.min(255, ((Tg * cg) / 255) | 0);
+            const B = Math.min(255, ((Tb * cb) / 255) | 0);
+            const out = ((R>>>3)<<10) | ((G>>>3)<<5) | (B>>>3);
+            this.vram[this.vramIndex(x,y)] = out & 0xffff;
+          }
+        }
+      }
+    }
+  }
+
+  private fillTriTexturedGouraud(
+    x1:number,y1:number,u1:number,v1:number,c1:number,
+    x2:number,y2:number,u2:number,v2:number,c2:number,
+    x3:number,y3:number,u3:number,v3:number,c3:number,
+  ) {
+    // Apply offset
+    const ox = this.drawOffX | 0, oy = this.drawOffY | 0;
+    x1 = (x1 + ox) | 0; y1 = (y1 + oy) | 0;
+    x2 = (x2 + ox) | 0; y2 = (y2 + oy) | 0;
+    x3 = (x3 + ox) | 0; y3 = (y3 + oy) | 0;
+
+    const minX = Math.max(this.clipLeft, Math.min(x1, x2, x3));
+    const maxX = Math.min(this.clipRight, Math.max(x1, x2, x3));
+    const minY = Math.max(this.clipTop, Math.min(y1, y2, y3));
+    const maxY = Math.min(this.clipBottom, Math.max(y1, y2, y3));
+
+    const r1 = (c1)&0xff, g1=(c1>>>8)&0xff, b1=(c1>>>16)&0xff;
+    const r2 = (c2)&0xff, g2=(c2>>>8)&0xff, b2=(c2>>>16)&0xff;
+    const r3 = (c3)&0xff, g3=(c3>>>8)&0xff, b3=(c3>>>16)&0xff;
+
+    const edge = (ax:number,ay:number,bx:number,by:number,px:number,py:number)=> (px-ax)*(by-ay) - (py-ay)*(bx-ax);
+    const area = edge(x1,y1,x2,y2,x3,y3);
+    if (area === 0) return;
+
+    for (let y=minY; y<=maxY; y++) {
+      for (let x=minX; x<=maxX; x++) {
+        const w0 = edge(x2,y2,x3,y3,x,y);
+        const w1 = edge(x3,y3,x1,y1,x,y);
+        const w2 = edge(x1,y1,x2,y2,x,y);
+        if ((area > 0 && w0 >= 0 && w1 >= 0 && w2 >= 0) || (area < 0 && w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+          const f0 = w0/area, f1 = w1/area, f2 = w2/area;
+          const uu = Math.round(u1*f0 + u2*f1 + u3*f2) & 0x3ff;
+          const vv = Math.round(v1*f0 + v2*f1 + v3*f2) & 0x1ff;
+          let U = uu | 0, V = vv | 0;
+          if (this.texAddrWrap) {
+            U = ((U % this.texW) + this.texW) % this.texW;
+            V = ((V % this.texH) + this.texH) % this.texH;
+          } else {
+            if (U < 0) U = 0; else if (U >= this.texW) U = this.texW - 1;
+            if (V < 0) V = 0; else if (V >= this.texH) V = this.texH - 1;
+          }
+          const sx = (this.texBaseX + U) & 0x3ff; const sy = (this.texBaseY + V) & 0x1ff;
+          const tex = this.vram[this.vramIndex(sx, sy)] & 0xffff;
+          // Expand 5-bit to 8-bit approx
+          const tr = ((tex>>>10)&0x1f); const tg=((tex>>>5)&0x1f); const tb=(tex&0x1f);
+          const Tr = (tr<<3)|(tr>>>2), Tg=(tg<<3)|(tg>>>2), Tb=(tb<<3)|(tb>>>2);
+          // Interpolate vertex color
+          const Cr = Math.round(r1*f0 + r2*f1 + r3*f2);
+          const Cg = Math.round(g1*f0 + g2*f1 + g3*f2);
+          const Cb = Math.round(b1*f0 + b2*f1 + b3*f2);
+          // Modulate
+          const R = Math.min(255, (Tr * Cr) / 255 | 0);
+          const G = Math.min(255, (Tg * Cg) / 255 | 0);
+          const B = Math.min(255, (Tb * Cb) / 255 | 0);
+          const out = ((R>>>3)<<10)|((G>>>3)<<5)|(B>>>3);
+          this.vram[this.vramIndex(x,y)] = out & 0xffff;
+        }
+      }
+    }
+  }
+
+  private fillTriGouraud(x1:number,y1:number,c1:number,x2:number,y2:number,c2:number,x3:number,y3:number,c3:number) {
+    // Extract per-vertex RGB (using same packing as fillRect)
+    const r1 = (c1) & 0xff, g1 = (c1>>>8)&0xff, b1 = (c1>>>16)&0xff;
+    const r2 = (c2) & 0xff, g2 = (c2>>>8)&0xff, b2 = (c2>>>16)&0xff;
+    const r3 = (c3) & 0xff, g3 = (c3>>>8)&0xff, b3 = (c3>>>16)&0xff;
+
+    const clampU8 = (v:number)=> v<0?0: v>255?255:v;
+    const to555 = (r:number,g:number,b:number)=>(((r>>>3)<<10)|((g>>>3)<<5)|(b>>>3)) & 0xffff;
+
+    // Apply drawing offset
+    const ox = this.drawOffX | 0, oy = this.drawOffY | 0;
+    x1 = (x1 + ox) | 0; y1 = (y1 + oy) | 0;
+    x2 = (x2 + ox) | 0; y2 = (y2 + oy) | 0;
+    x3 = (x3 + ox) | 0; y3 = (y3 + oy) | 0;
+
+    const minX = Math.max(this.clipLeft, Math.min(x1, x2, x3));
+    const maxX = Math.min(this.clipRight, Math.max(x1, x2, x3));
+    const minY = Math.max(this.clipTop, Math.min(y1, y2, y3));
+    const maxY = Math.min(this.clipBottom, Math.max(y1, y2, y3));
+
+    const edge = (ax:number,ay:number,bx:number,by:number,px:number,py:number)=> (px-ax)*(by-ay) - (py-ay)*(bx-ax);
+    const area = edge(x1,y1,x2,y2,x3,y3);
+    if (area === 0) return;
+
+    for (let y=minY; y<=maxY; y++) {
+      for (let x=minX; x<=maxX; x++) {
+        const w0 = edge(x2,y2,x3,y3,x,y);
+        const w1 = edge(x3,y3,x1,y1,x,y);
+        const w2 = edge(x1,y1,x2,y2,x,y);
+        if ((area > 0 && w0 >= 0 && w1 >= 0 && w2 >= 0) || (area < 0 && w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+          const f0 = w0/area, f1 = w1/area, f2 = w2/area;
+          const r = clampU8(Math.round(r1*f0 + r2*f1 + r3*f2));
+          const g = clampU8(Math.round(g1*f0 + g2*f1 + g3*f2));
+          const b = clampU8(Math.round(b1*f0 + b2*f1 + b3*f2));
+          this.vram[this.vramIndex(x,y)] = to555(r,g,b);
+        }
+      }
+    }
   }
 }
 
