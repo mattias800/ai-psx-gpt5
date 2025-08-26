@@ -27,9 +27,16 @@ export interface GPURegs {
   readGP1(): number;
 }
 
+export interface TimerPort {
+  readCount(): number; writeCount(v: number): void;
+  readMode(): number; writeMode(v: number): void;
+  readTarget(): number; writeTarget(v: number): void;
+}
+
 export interface IODevices {
   gpu?: GPURegs;
   intc?: { readStatus(): number; readMask(): number; writeMask(v: number): void; ackMask(v: number): void };
+  timers?: [TimerPort, TimerPort, TimerPort];
 }
 
 export class IOHub implements MemoryRegion {
@@ -39,15 +46,24 @@ export class IOHub implements MemoryRegion {
   read16(addr: number): number { const v = this.read32(addr); return (v >>> ((addr & 2) * 8)) & 0xffff; }
   read32(addr: number): number {
     const p = toPhysical(addr);
+    const t = this.devs.timers;
     switch (p) {
-      case 0x1f801070: // I_STAT
-        return (this.devs.intc?.readStatus() ?? 0) >>> 0;
-      case 0x1f801074: // I_MASK
-        return (this.devs.intc?.readMask() ?? 0) >>> 0;
-      case 0x1f801810: // GPUREAD (GP0 read)
-        return (this.devs.gpu?.readGP0() ?? 0) >>> 0;
-      case 0x1f801814: // GPUSTAT (GP1 read)
-        return (this.devs.gpu?.readGP1() ?? 0) >>> 0;
+      // INTC
+      case 0x1f801070: return (this.devs.intc?.readStatus() ?? 0) >>> 0; // I_STAT
+      case 0x1f801074: return (this.devs.intc?.readMask() ?? 0) >>> 0;   // I_MASK
+      // Timers 0..2: COUNT, MODE, TARGET
+      case 0x1f801100: return t ? t[0].readCount() & 0xffff : 0;
+      case 0x1f801104: return t ? t[0].readMode() & 0xffff : 0;
+      case 0x1f801108: return t ? t[0].readTarget() & 0xffff : 0;
+      case 0x1f801110: return t ? t[1].readCount() & 0xffff : 0;
+      case 0x1f801114: return t ? t[1].readMode() & 0xffff : 0;
+      case 0x1f801118: return t ? t[1].readTarget() & 0xffff : 0;
+      case 0x1f801120: return t ? t[2].readCount() & 0xffff : 0;
+      case 0x1f801124: return t ? t[2].readMode() & 0xffff : 0;
+      case 0x1f801128: return t ? t[2].readTarget() & 0xffff : 0;
+      // GPU
+      case 0x1f801810: return (this.devs.gpu?.readGP0() ?? 0) >>> 0; // GPUREAD (GP0 read)
+      case 0x1f801814: return (this.devs.gpu?.readGP1() ?? 0) >>> 0; // GPUSTAT (GP1 read)
       default:
         return 0;
     }
@@ -56,15 +72,24 @@ export class IOHub implements MemoryRegion {
   write16(addr: number, v: number): void { const shift = (addr & 2) * 8; const cur = this.read32(addr); const nv = (cur & ~(0xffff << shift)) | ((v & 0xffff) << shift); this.write32(addr & ~3, nv >>> 0); }
   write32(addr: number, v: number): void {
     const p = toPhysical(addr);
+    const t = this.devs.timers;
     switch (p) {
-      case 0x1f801070: // I_STAT (ack bits by writing 1s)
-        this.devs.intc?.ackMask(v >>> 0); break;
-      case 0x1f801074: // I_MASK
-        this.devs.intc?.writeMask(v >>> 0); break;
-      case 0x1f801810: // GP0
-        this.devs.gpu?.writeGP0(v >>> 0); break;
-      case 0x1f801814: // GP1
-        this.devs.gpu?.writeGP1(v >>> 0); break;
+      // INTC
+      case 0x1f801070: this.devs.intc?.ackMask(v >>> 0); break; // I_STAT
+      case 0x1f801074: this.devs.intc?.writeMask(v >>> 0); break; // I_MASK
+      // Timers 0..2: COUNT, MODE, TARGET
+      case 0x1f801100: if (t) t[0].writeCount(v); break;
+      case 0x1f801104: if (t) t[0].writeMode(v); break;
+      case 0x1f801108: if (t) t[0].writeTarget(v); break;
+      case 0x1f801110: if (t) t[1].writeCount(v); break;
+      case 0x1f801114: if (t) t[1].writeMode(v); break;
+      case 0x1f801118: if (t) t[1].writeTarget(v); break;
+      case 0x1f801120: if (t) t[2].writeCount(v); break;
+      case 0x1f801124: if (t) t[2].writeMode(v); break;
+      case 0x1f801128: if (t) t[2].writeTarget(v); break;
+      // GPU
+      case 0x1f801810: this.devs.gpu?.writeGP0(v >>> 0); break; // GP0
+      case 0x1f801814: this.devs.gpu?.writeGP1(v >>> 0); break; // GP1
       default:
         // ignore
         break;
