@@ -27,8 +27,11 @@ export interface CPUHost {
   write8(addr: number, val: number): void;
 }
 
+import { GTE } from './gte';
+
 export class R3000A {
   private cop0 = new Int32Array(32);
+  private gte = new GTE();
   constructor(public s: CPUState, private mem: CPUHost, private intPending?: () => boolean) {}
 
   private enterException(vector: number, excCode: number, inDelay: boolean = false) {
@@ -261,6 +264,24 @@ export class R3000A {
           this.cop0[12] = ((sr & ~0x3f) | nmode) | 0;
         } else {
           // other COP0 ops not implemented
+        }
+        break;
+      }
+      case 0x12: { // COP2 (GTE)
+        const copOp = (instr >>> 21) & 0x1f;
+        const rdSel = (instr >>> 11) & 31;
+        if (copOp === 0x00) { // MFC2
+          writeReg(rt, this.gte.mfc2(rdSel));
+        } else if (copOp === 0x02) { // CFC2
+          writeReg(rt, this.gte.cfc2(rdSel));
+        } else if (copOp === 0x04) { // MTC2
+          this.gte.mtc2(rdSel, r[rt]);
+        } else if (copOp === 0x06) { // CTC2
+          this.gte.ctc2(rdSel, r[rt]);
+        } else if (copOp === 0x10) { // GTE arithmetic op
+          this.gte.exec(instr);
+        } else {
+          // unimplemented
         }
         break;
       }
