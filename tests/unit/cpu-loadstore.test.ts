@@ -97,24 +97,19 @@ describe('R3000A loads/stores', () => {
     expect(cpu.s.regs[2] >>> 0).toBe(0x44332211 >>> 0);
 
     // Test SWL/SWR to write 0xA1B2C3D4 at 300 with base+1 and base+0
-    const code2 = emit([
+    const prog = [
       ORI(0,1,300),
-      ORI(0,2,0xC3D4),
-      // Preload high via direct memory, as ORI can't set upper 16 here; we'll write via SW to aligned then unaligned pieces
-    ]);
-    mem.buf.fill(0); mem.buf.set(code2, 0);
-    const cpu2 = new R3000A(createResetState(0), mem);
-    // Manually set r2 full 32-bit
-    cpu2.s.regs[2] = 0xa1b2c3d4 | 0;
-    // Perform SWL at addr+1 then SWR at addr+0
-    // Encode SWL r1+1,r2 and SWR r1+0,r2, then LW to verify
-    const code3 = emit([
+      // SWL/SWR sequence to write unaligned value
       SWL(1,2,1),
       SWR(1,2,0),
       LW(1,3,0),
-    ]);
-    mem.buf.set(code3, code2.length);
-    for (let i = 0; i < code3.length/4; i++) cpu2.step();
+    ];
+    const code2 = emit(prog);
+    mem.buf.fill(0); mem.buf.set(code2, 0);
+    const cpu2 = new R3000A(createResetState(0), mem);
+    // Manually set r2 full 32-bit before executing SWL/SWR
+    cpu2.s.regs[2] = 0xa1b2c3d4 | 0;
+    for (let i = 0; i < prog.length; i++) cpu2.step();
     expect(mem.read32(300) >>> 0).toBe(0xa1b2c3d4 >>> 0);
     expect(cpu2.s.regs[3] >>> 0).toBe(0xa1b2c3d4 >>> 0);
   });
