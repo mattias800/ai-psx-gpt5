@@ -56,6 +56,10 @@ describe('E2E: PSXSystem DMA IRQ vectoring (GPU ch2 linked-list)', () => {
       LUI(4, (DICR>>>16)&0xffff), ORI(4,4,(DICR&0xffff)),
       LUI(5, (dicrVal>>>16)&0xffff), ORI(5,5,(dicrVal&0xffff)),
       SW(4,5,0),
+      // Set GPU GP1 DMA direction: FIFO write (CPU->GP0)
+      LUI(8, (0x1f801814>>>16)&0xffff), ORI(8,8,(0x1f801814&0xffff)),
+      LUI(9, ( (0x04<<24 | 0x1)>>>16)&0xffff), ORI(9,9,((0x04<<24 | 0x1)&0xffff)),
+      SW(8,9,0),
       // ch2 MADR = base
       LUI(6, (CH2_MADR>>>16)&0xffff), ORI(6,6,(CH2_MADR&0xffff)),
       LUI(7, (base>>>16)&0xffff), ORI(7,7,(base&0xffff)),

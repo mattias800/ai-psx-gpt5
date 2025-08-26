@@ -18,6 +18,9 @@ describe('DMAC GPU block to memory (ch2, dir=to mem, sync=0)', () => {
     as.addRegion(ram);
     as.addRegion(io);
 
+    // Set GPU DMA direction to FIFO read (GPUREAD)
+    as.write32(0x1f801814, ((0x04<<24) | 0x2) >>> 0);
+
     // Write a 3x2 rectangle of pixels into VRAM via Image Load
     const x = 4, y = 6, w = 3, h = 2;
     const px = [0x1111,0x2222,0x3333,0x4444,0x5555,0x6666];

@@ -87,17 +87,27 @@ export class DMAC {
     const dirFromMem = (chcr & 1) !== 0;
     const stepDec = (chcr & 2) !== 0;
     const sync = (chcr >>> 9) & 3;
+
+    let performed = false;
+
     switch (ch) {
-      case 2: // GPU
+      case 2: { // GPU
+        const dmaDir = (this.gpu.readGP1() >>> 29) & 0x3; // 1=FIFO write (CPU->GP0), 2=FIFO read (GPUREAD)
+        const canWrite = dmaDir === 1;
+        const canRead = dmaDir === 2;
         if (sync === 0) {
-          if (dirFromMem) this.gpuBlock(c, stepDec);
-          else this.gpuBlockToMem(c, stepDec);
+          if (dirFromMem) {
+            if (canWrite) { this.gpuBlock(c, stepDec); performed = true; }
+          } else {
+            if (canRead) { this.gpuBlockToMem(c, stepDec); performed = true; }
+          }
         } else if (dirFromMem && sync === 2) {
-          this.gpuLinkedList(c);
+          if (canWrite) { this.gpuLinkedList(c); performed = true; }
         }
         break;
+      }
       case 6: // OTC
-        if (!dirFromMem && sync === 0) this.otcBuild(c);
+        if (!dirFromMem && sync === 0) { this.otcBuild(c); performed = true; }
         break;
       default:
         // unimplemented for other channels
@@ -111,7 +121,7 @@ export class DMAC {
     const chFlagMask = 1 << (16 + ch);
     const masterEnable = (this.dicr & (1<<24)) !== 0;
     const chEnabled = (this.dicr & chMask) !== 0;
-    if (masterEnable && chEnabled) {
+    if (performed && masterEnable && chEnabled) {
       this.dicr |= chFlagMask;
       this.dicr |= (1<<23); // master flag
       this.intc?.raise(IRQ.DMA);

@@ -42,6 +42,8 @@ describe('DMAC MMIO -> GPU GP0', () => {
     ];
     for (let i = 0; i < words.length; i++) as.write32(base + i*4, words[i]>>>0);
 
+    // Set GPU DMA direction to FIFO write (CPU->GP0)
+    as.write32(0x1f801814, ((0x04<<24) | 0x1) >>> 0);
     // Program DMAC GPU channel: MADR, BCR=wordCount, CHCR=dir(from mem)|start
     as.write32(0x1f8010a0, base >>> 0);
     as.write32(0x1f8010a4, words.length >>> 0);

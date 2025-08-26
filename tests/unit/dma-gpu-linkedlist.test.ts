@@ -18,6 +18,9 @@ describe('DMAC GPU linked-list (ch2, sync=2) -> GP0', () => {
     as.addRegion(ram);
     as.addRegion(io);
 
+    // Set GPU DMA direction to FIFO write (CPU->GP0)
+    as.write32(0x1f801814, ((0x04<<24) | 0x1) >>> 0);
+
     const base = 0x80;
     const color = 0x00ff00; // green
     const x=10,y=12,w=2,h=2;
