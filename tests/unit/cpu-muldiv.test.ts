@@ -45,7 +45,7 @@ describe('R3000A mult/div and HI/LO', () => {
       MFLO(3),
       MFHI(4),
     ]);
-    mem.set(code, 0);
+    mem.buf.set(code, 0);
     const cpu = new R3000A(createResetState(0), mem);
     cpu.s.regs[1] = 123456 | 0;
     cpu.s.regs[2] = -789 | 0;
@@ -63,7 +63,7 @@ describe('R3000A mult/div and HI/LO', () => {
       DIV(1,2), MFLO(3), MFHI(4),
       DIV(5,6), MFLO(7), MFHI(8),
     ]);
-    mem.set(code, 0);
+    mem.buf.set(code, 0);
     const cpu = new R3000A(createResetState(0), mem);
     cpu.s.regs[1] = 7; cpu.s.regs[2] = 3;
     cpu.s.regs[5] = -2147483648; cpu.s.regs[6] = -1;
@@ -77,7 +77,7 @@ describe('R3000A mult/div and HI/LO', () => {
   it('DIVU unsigned', () => {
     const mem = new TestMem();
     const code = emit([ DIVU(1,2), MFLO(3), MFHI(4) ]);
-    mem.set(code, 0);
+    mem.buf.set(code, 0);
     const cpu = new R3000A(createResetState(0), mem);
     cpu.s.regs[1] = 0x80000000 | 0;
     cpu.s.regs[2] = 2;
