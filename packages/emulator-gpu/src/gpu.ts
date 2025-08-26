@@ -31,6 +31,10 @@ export class GPU {
         case 0xc0: // Image Store (VRAM -> CPU)
           this.parmWordsNeeded = 2; // xy, size
           break;
+        case 0x64: // Rectangle (variable) filled, opaque
+          this.parmWordsNeeded = 2; // xy, size (color was the command word)
+          this.parms.push(val); // store color as parms[0] for convenience
+          break;
         default:
           // Unimplemented GP0 command; ignore for now
           this.inCmd = 0;
@@ -53,6 +57,15 @@ export class GPU {
           const { w, h } = this.decodeSize(this.parms[1]);
           this.imageStoreQueue = this.readRectToWords(x, y, w, h);
           this.inCmd = 0; // No payload for store; GPUREAD will fetch
+        } else if (this.inCmd === 0x64) {
+          const color = this.parms[0] >>> 0;
+          const xy = this.parms[1] >>> 0;
+          const size = this.parms[2] >>> 0;
+          const { x, y } = this.decodeXY(xy);
+          const { w, h } = this.decodeSize(size);
+          this.fillRect(x, y, w, h, color);
+          this.inCmd = 0;
+          this.parms.length = 0;
         }
       }
       return;
@@ -130,6 +143,20 @@ export class GPU {
     const X = ((x % 1024) + 1024) % 1024;
     const Y = ((y % 512) + 512) % 512;
     return Y * 1024 + X;
+  }
+
+  private fillRect(x: number, y: number, w: number, h: number, color24: number) {
+    const r = (color24) & 0xff;
+    const g = (color24 >>> 8) & 0xff;
+    const b = (color24 >>> 16) & 0xff;
+    const bgr555 = ((r >>> 3) << 10) | ((g >>> 3) << 5) | (b >>> 3);
+    for (let j = 0; j < h; j++) {
+      const vy = (y + j) & 0x1ff;
+      for (let i = 0; i < w; i++) {
+        const vx = (x + i) & 0x3ff;
+        this.vram[this.vramIndex(vx, vy)] = bgr555 & 0xffff;
+      }
+    }
   }
 
   private writeImageWord(word: number) {
