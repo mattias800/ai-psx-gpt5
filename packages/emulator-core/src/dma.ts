@@ -1,6 +1,6 @@
 import type { Bus } from './bus';
 import type { GPURegs } from './address-space';
-import { InterruptController, IRQ } from './timing';
+import { EventScheduler, InterruptController, IRQ } from './timing';
 
 export class DMAController {
   constructor(private bus: Bus, private gpu: GPURegs) {}
@@ -28,7 +28,7 @@ export class DMAC {
   private dpcr = 0xffffffff >>> 0; // default all enabled (for simplicity)
   private dicr = 0 >>> 0; // IRQ control (shadow)
 
-  constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController) {}
+  constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController, private sch?: EventScheduler, private cyclesPerWord: number = 0) {}
 
   read32(addr: number): number {
     const a = addr >>> 0;
@@ -103,6 +103,24 @@ export class DMAC {
       try { fn(); } finally { c.chcr &= ~(1 << 28); }
     };
 
+    const scheduleOrRun = (words: number, work: () => void): boolean => {
+      if (this.sch && this.cyclesPerWord > 0 && words > 0) {
+        // async path: set busy, clear start now, perform later
+        c.chcr |= (1 << 28);
+        c.chcr &= ~(1 << 24);
+        this.sch.schedule(this.cyclesPerWord * words, () => {
+          try {
+            work();
+          } finally {
+            c.chcr &= ~(1 << 28);
+            this.raiseIrqIfEnabled(ch);
+          }
+        });
+        return true;
+      }
+      return false;
+    };
+
     switch (ch) {
       case 2: { // GPU
         const dmaDir = (this.gpu.readGP1() >>> 29) & 0x3; // 1=FIFO write (CPU->GP0), 2=FIFO read (GPUREAD)
@@ -110,16 +128,31 @@ export class DMAC {
         const canRead = dmaDir === 2;
         if (sync === 0) {
           if (dirFromMem) {
-            if (canWrite) { doWithBusy(() => this.gpuBlock(c, stepDec)); performed = true; }
+            if (canWrite) {
+              const words = c.bcr & 0xffff;
+              if (scheduleOrRun(words, () => this.gpuBlock(c, stepDec))) return;
+              doWithBusy(() => this.gpuBlock(c, stepDec)); performed = true;
+            }
           } else {
-            if (canRead) { doWithBusy(() => this.gpuBlockToMem(c, stepDec)); performed = true; }
+            if (canRead) {
+              const words = c.bcr & 0xffff;
+              if (scheduleOrRun(words, () => this.gpuBlockToMem(c, stepDec))) return;
+              doWithBusy(() => this.gpuBlockToMem(c, stepDec)); performed = true;
+            }
           }
         } else if (sync === 1) {
           const blkSize = c.bcr & 0xffff;
           const blkCount = (c.bcr >>> 16) & 0xffff;
           if (blkSize > 0 && blkCount > 0) {
-            if (dirFromMem && canWrite) { doWithBusy(() => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec)); performed = true; }
-            else if (!dirFromMem && canRead) { doWithBusy(() => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec)); performed = true; }
+            const words = blkSize * blkCount;
+            if (dirFromMem && canWrite) {
+              if (scheduleOrRun(words, () => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec))) return;
+              doWithBusy(() => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec)); performed = true;
+            }
+            else if (!dirFromMem && canRead) {
+              if (scheduleOrRun(words, () => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec))) return;
+              doWithBusy(() => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec)); performed = true;
+            }
           }
         } else if (dirFromMem && sync === 2) {
           if (canWrite) { doWithBusy(() => this.gpuLinkedList(c)); performed = true; }
@@ -137,13 +170,17 @@ export class DMAC {
     c.chcr &= ~(1 << 24);
 
     // IRQ signaling via DICR/INTC
+    if (performed) this.raiseIrqIfEnabled(ch);
+  }
+
+  private raiseIrqIfEnabled(ch: number) {
     const chMask = 1 << ch;
     const chFlagMask = 1 << (16 + ch);
     const masterEnable = (this.dicr & (1<<24)) !== 0;
     const chEnabled = (this.dicr & chMask) !== 0;
-    if (performed && masterEnable && chEnabled) {
+    if (masterEnable && chEnabled) {
       this.dicr |= chFlagMask;
-      this.dicr |= (1<<23); // master flag
+      this.dicr |= (1<<23);
       this.intc?.raise(IRQ.DMA);
     }
   }
