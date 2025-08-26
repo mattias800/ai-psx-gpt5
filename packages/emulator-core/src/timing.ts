@@ -1,15 +1,28 @@
 export class EventScheduler {
   private nowCycles = 0;
-  // Min-heap of [when, id, cb]
-  private q: Array<{ when: number; id: number; cb: () => void }> = [];
+  // Min-heap of [when, id, cb? , key?, payload?]
+  private q: Array<{ when: number; id: number; cb?: () => void; key?: string; payload?: unknown } > = [];
   private nextId = 1;
+  private handlers = new Map<string, (payload: unknown) => void>();
 
   get now(): number { return this.nowCycles; }
+
+  registerHandler(key: string, handler: (payload: unknown) => void): void {
+    this.handlers.set(key, handler);
+  }
 
   schedule(cyclesFromNow: number, cb: () => void): number {
     const id = this.nextId++;
     const when = this.nowCycles + Math.max(0, cyclesFromNow | 0);
     this.q.push({ when, id, cb });
+    this.bubbleUp(this.q.length - 1);
+    return id;
+  }
+
+  scheduleKey(cyclesFromNow: number, key: string, payload?: unknown): number {
+    const id = this.nextId++;
+    const when = this.nowCycles + Math.max(0, cyclesFromNow | 0);
+    this.q.push({ when, id, key, payload });
     this.bubbleUp(this.q.length - 1);
     return id;
   }
@@ -30,9 +43,33 @@ export class EventScheduler {
     while (this.q.length && this.q[0].when <= end) {
       const evt = this.popMin();
       this.nowCycles = evt.when;
-      evt.cb();
+      if (evt.cb) {
+        evt.cb();
+      } else if (evt.key) {
+        const h = this.handlers.get(evt.key);
+        if (h) h(evt.payload);
+      }
     }
     this.nowCycles = end;
+  }
+
+  serialize(): any {
+    // Only serialize key-based events to ensure portability
+    const queue = this.q
+      .filter(e => e.key)
+      .map(e => ({ when: e.when, id: e.id, key: e.key!, payload: e.payload ?? null }));
+    return { now: this.nowCycles, nextId: this.nextId, queue };
+  }
+
+  deserialize(snap: any): void {
+    this.nowCycles = snap.now >>> 0;
+    this.nextId = snap.nextId >>> 0;
+    this.q.length = 0;
+    for (const e of snap.queue as Array<{ when: number; id: number; key: string; payload: unknown }>) {
+      this.q.push({ when: e.when >>> 0, id: e.id >>> 0, key: e.key, payload: e.payload });
+    }
+    // heapify
+    for (let i = (this.q.length >> 1) - 1; i >= 0; i--) this.bubbleDown(i);
   }
 
   private bubbleUp(i: number) {
