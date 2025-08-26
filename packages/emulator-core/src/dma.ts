@@ -81,7 +81,6 @@ export class DMAC {
   }
 
   private runChannel(ch: number) {
-    // If disabled in DPCR, ignore (we default enabled for simplicity)
     const c = this.channels[ch];
     const chcr = c.chcr >>> 0;
     const dirFromMem = (chcr & 1) !== 0;
@@ -89,6 +88,14 @@ export class DMAC {
     const sync = (chcr >>> 9) & 3;
 
     let performed = false;
+
+    // DPCR gating: require channel enabled to perform any transfer
+    const dpcrEnabled = (this.dpcr & (1 << ch)) !== 0;
+    if (!dpcrEnabled) {
+      // Clear start/trigger bit without performing
+      c.chcr &= ~(1 << 24);
+      return;
+    }
 
     switch (ch) {
       case 2: { // GPU
