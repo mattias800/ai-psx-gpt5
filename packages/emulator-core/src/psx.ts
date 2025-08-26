@@ -5,6 +5,7 @@ import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 import { GPU } from '../../emulator-gpu/src/gpu';
 import { SPU } from '../../emulator-spu/src/spu';
 import { DMAC } from './dma';
+import { PSX_CLOCK } from '@ai-psx/shared';
 
 class CPUHostBus implements CPUHost {
   constructor(private as: AddressSpace) {}
@@ -89,5 +90,19 @@ export class PSXSystem {
 
   stepCycles(cycles: number) {
     this.sch.step(cycles);
+  }
+
+  attachSPUAudio(opts?: Partial<{ sampleRate: number; chunkFrames: number }>) {
+    const sampleRate = opts?.sampleRate ?? 44100;
+    const chunkFrames = opts?.chunkFrames ?? 64;
+    const cyclesPerFrame = Math.floor(PSX_CLOCK / sampleRate);
+    const cyclesPerChunk = cyclesPerFrame * chunkFrames;
+    const scheduleNext = () => {
+      // mix and reschedule
+      this.spu.stepMix(chunkFrames);
+      this.sch.schedule(cyclesPerChunk, scheduleNext);
+    };
+    // seed
+    this.sch.schedule(cyclesPerChunk, scheduleNext);
   }
 }
