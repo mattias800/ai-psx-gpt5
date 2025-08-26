@@ -28,6 +28,7 @@ export interface CPUHost {
 }
 
 export class R3000A {
+  private cop0 = new Int32Array(32);
   constructor(public s: CPUState, private mem: CPUHost) {}
 
   step(): void {
@@ -213,6 +214,24 @@ export class R3000A {
       case 0x02: // J
         this.s.nextPc = target >>> 0;
         break;
+      case 0x10: { // COP0
+        const copOp = (instr >>> 21) & 0x1f;
+        const rdSel = (instr >>> 11) & 31;
+        if (copOp === 0x00) { // MFC0
+          writeReg(rt, this.cop0[rdSel] | 0);
+        } else if (copOp === 0x04) { // MTC0
+          this.cop0[rdSel] = r[rt] | 0;
+        } else if (copOp === 0x10 && (fn === 0x10)) { // RFE
+          // Rotate SR mode bits (KUc,IEc,KUp,IEp,KUo,IEo) right by 2
+          const sr = this.cop0[12] >>> 0; // SR is reg12
+          const mode = sr & 0x3f;
+          const nmode = ((mode >>> 2) | ((mode & 0x3) << 4)) & 0x3f;
+          this.cop0[12] = ((sr & ~0x3f) | nmode) | 0;
+        } else {
+          // other COP0 ops not implemented
+        }
+        break;
+      }
       case 0x03: // JAL
         writeReg(31, this.s.pc);
         this.s.nextPc = target >>> 0;
