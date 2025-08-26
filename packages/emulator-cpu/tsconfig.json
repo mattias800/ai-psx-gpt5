@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../emulator-shared" },
+    { "path": "../emulator-core" }
+  ],
+  "include": ["src"]
+}
+

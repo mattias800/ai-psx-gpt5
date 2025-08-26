@@ -1,0 +1,19 @@
+{
+  "name": "@ai-psx/cpu",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest --run",
+    "test:coverage": "vitest --run --coverage"
+  },
+  "dependencies": {
+    "@ai-psx/shared": "workspace:*",
+    "@ai-psx/core": "workspace:*"
+  }
+}
+
