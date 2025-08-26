@@ -42,10 +42,10 @@ describe('DMAC MMIO -> GPU GP0', () => {
     ];
     for (let i = 0; i < words.length; i++) as.write32(base + i*4, words[i]>>>0);
 
-    // Program DMAC GPU channel: MADR, BCR=wordCount, CHCR=start
+    // Program DMAC GPU channel: MADR, BCR=wordCount, CHCR=dir(from mem)|start
     as.write32(0x1f8010a0, base >>> 0);
     as.write32(0x1f8010a4, words.length >>> 0);
-    as.write32(0x1f8010a8, 1<<24);
+    as.write32(0x1f8010a8, (1<<0) | (1<<24));
 
     // Read back via Image Store
     as.write32(0x1f801810, (0xc0 << 24) >>> 0);

@@ -89,9 +89,12 @@ export class DMAC {
     const sync = (chcr >>> 9) & 3;
     switch (ch) {
       case 2: // GPU
-        // For compatibility, treat sync=0 as mem->GPU block regardless of dir bit
-        if (sync === 0) this.gpuBlock(c, stepDec);
-        else if (dirFromMem && sync === 2) this.gpuLinkedList(c);
+        if (sync === 0) {
+          if (dirFromMem) this.gpuBlock(c, stepDec);
+          else this.gpuBlockToMem(c, stepDec);
+        } else if (dirFromMem && sync === 2) {
+          this.gpuLinkedList(c);
+        }
         break;
       case 6: // OTC
         if (!dirFromMem && sync === 0) this.otcBuild(c);
@@ -121,6 +124,17 @@ export class DMAC {
     for (let i = 0; i < words; i++) {
       const w = this.bus.read32(addr) >>> 0;
       this.gpu.writeGP0(w);
+      addr = (addr + (stepDec ? -4 : 4)) >>> 0;
+    }
+    c.madr = addr >>> 0;
+  }
+
+  private gpuBlockToMem(c: { madr: number; bcr: number; chcr: number }, stepDec: boolean) {
+    const words = c.bcr & 0xffff;
+    let addr = c.madr >>> 0;
+    for (let i = 0; i < words; i++) {
+      const w = this.gpu.readGP0() >>> 0;
+      this.bus.write32(addr, w);
       addr = (addr + (stepDec ? -4 : 4)) >>> 0;
     }
     c.madr = addr >>> 0;
