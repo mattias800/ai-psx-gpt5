@@ -37,6 +37,7 @@ export interface IODevices {
   gpu?: GPURegs;
   intc?: { readStatus(): number; readMask(): number; writeMask(v: number): void; ackMask(v: number): void };
   timers?: [TimerPort, TimerPort, TimerPort];
+  dma?: { read32(addr: number): number; write32(addr: number, v: number): void };
 }
 
 export class IOHub implements MemoryRegion {
@@ -64,6 +65,11 @@ export class IOHub implements MemoryRegion {
       // GPU
       case 0x1f801810: return (this.devs.gpu?.readGP0() ?? 0) >>> 0; // GPUREAD (GP0 read)
       case 0x1f801814: return (this.devs.gpu?.readGP1() ?? 0) >>> 0; // GPUSTAT (GP1 read)
+      // DMA (GPU channel subset)
+      case 0x1f8010a0:
+      case 0x1f8010a4:
+      case 0x1f8010a8:
+        return this.devs.dma?.read32(p) ?? 0;
       default:
         return 0;
     }
@@ -90,6 +96,11 @@ export class IOHub implements MemoryRegion {
       // GPU
       case 0x1f801810: this.devs.gpu?.writeGP0(v >>> 0); break; // GP0
       case 0x1f801814: this.devs.gpu?.writeGP1(v >>> 0); break; // GP1
+      // DMA (GPU channel subset)
+      case 0x1f8010a0:
+      case 0x1f8010a4:
+      case 0x1f8010a8:
+        this.devs.dma?.write32(p, v >>> 0); break;
       default:
         // ignore
         break;
