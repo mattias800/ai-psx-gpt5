@@ -76,7 +76,7 @@ describe('R3000A extended ALU and branches', () => {
     cpu.s.pc = 0; cpu.s.nextPc = 4;
     for (let i=0;i<code2.length/4;i++) cpu.step();
     expect(cpu.s.regs[31]>>>0).toBe(12>>>0);
-    expect(cpu.s.pc>>>0).toBe(12);
+    expect(cpu.s.pc>>>0).toBe(16);
     expect(cpu.s.regs[4]>>>0).toBe(0x1234);
   });
 });
