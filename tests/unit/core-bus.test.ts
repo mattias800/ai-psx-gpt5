@@ -17,7 +17,8 @@ describe('core bus and SimpleRAM', () => {
     // wrapping
     bus.write8(1023, 0xaa);
     expect(bus.read8(1023)).toBe(0xaa);
-    expect(bus.read8(1024)).toBe(0xaa);
+    // wrap to 0
+    expect(bus.read8(1024)).toBe(0x12);
   });
 });
 
