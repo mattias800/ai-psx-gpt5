@@ -27,18 +27,27 @@ export interface GPURegs {
   readGP1(): number;
 }
 
+export interface IODevices {
+  gpu?: GPURegs;
+  intc?: { readStatus(): number; readMask(): number; writeMask(v: number): void; ackMask(v: number): void };
+}
+
 export class IOHub implements MemoryRegion {
-  constructor(private gpu: GPURegs) {}
+  constructor(private devs: IODevices) {}
   contains(addr: number): boolean { const p = toPhysical(addr); return p >= 0x1f801000 && p <= 0x1f803fff; }
   read8(addr: number): number { const v = this.read32(addr); return (v >>> ((addr & 3) * 8)) & 0xff; }
   read16(addr: number): number { const v = this.read32(addr); return (v >>> ((addr & 2) * 8)) & 0xffff; }
   read32(addr: number): number {
     const p = toPhysical(addr);
     switch (p) {
+      case 0x1f801070: // I_STAT
+        return (this.devs.intc?.readStatus() ?? 0) >>> 0;
+      case 0x1f801074: // I_MASK
+        return (this.devs.intc?.readMask() ?? 0) >>> 0;
       case 0x1f801810: // GPUREAD (GP0 read)
-        return this.gpu.readGP0() >>> 0;
+        return (this.devs.gpu?.readGP0() ?? 0) >>> 0;
       case 0x1f801814: // GPUSTAT (GP1 read)
-        return this.gpu.readGP1() >>> 0;
+        return (this.devs.gpu?.readGP1() ?? 0) >>> 0;
       default:
         return 0;
     }
@@ -48,10 +57,14 @@ export class IOHub implements MemoryRegion {
   write32(addr: number, v: number): void {
     const p = toPhysical(addr);
     switch (p) {
+      case 0x1f801070: // I_STAT (ack bits by writing 1s)
+        this.devs.intc?.ackMask(v >>> 0); break;
+      case 0x1f801074: // I_MASK
+        this.devs.intc?.writeMask(v >>> 0); break;
       case 0x1f801810: // GP0
-        this.gpu.writeGP0(v >>> 0); break;
+        this.devs.gpu?.writeGP0(v >>> 0); break;
       case 0x1f801814: // GP1
-        this.gpu.writeGP1(v >>> 0); break;
+        this.devs.gpu?.writeGP1(v >>> 0); break;
       default:
         // ignore
         break;
@@ -82,7 +95,7 @@ export function createDefaultPSXAddressSpace(bios: BIOSProvider, io?: IOHub): Ad
   as.addRegion(new MappedRAM(0x1f800000, 1024)); // 1KB scratchpad
   as.addRegion(new BIOSRegion(bios));
   as.addRegion(io ?? new IOHub({
-    writeGP0: () => {}, writeGP1: () => {}, readGP0: () => 0, readGP1: () => 0,
+    gpu: { writeGP0: () => {}, writeGP1: () => {}, readGP0: () => 0, readGP1: () => 0 }
   }));
   return as;
 }

@@ -10,10 +10,12 @@ describe('DMAController -> GPU GP0 streaming', () => {
     const ram = new MappedRAM(ramBase, 1 << 12); // 4KB
     const gpu = new GPU();
     const io = new IOHub({
-      writeGP0: (v) => gpu.writeGP0(v),
-      writeGP1: (v) => gpu.writeGP1(v),
-      readGP0: () => gpu.readGP0(),
-      readGP1: () => gpu.readGP1(),
+      gpu: {
+        writeGP0: (v) => gpu.writeGP0(v),
+        writeGP1: (v) => gpu.writeGP1(v),
+        readGP0: () => gpu.readGP0(),
+        readGP1: () => gpu.readGP1(),
+      }
     });
     const as = new AddressSpace();
     as.addRegion(ram);

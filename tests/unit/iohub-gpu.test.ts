@@ -21,7 +21,7 @@ class DummyGPU implements GPURegs {
 describe('IOHub GPU mapping', () => {
   it('routes GP0/GP1 through IO region', () => {
     const gpu = new DummyGPU();
-    const io = new IOHub(gpu);
+    const io = new IOHub({ gpu });
     const as = new AddressSpace();
     // map only IO for this test
     as.addRegion(io);

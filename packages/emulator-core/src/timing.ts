@@ -113,6 +113,7 @@ export class InterruptController {
   private istat = 0;
   raise(bit: IRQ) { this.istat |= (1 << bit); }
   ack(bit: IRQ) { this.istat &= ~(1 << bit); }
+  ackMask(mask: number) { this.istat &= ~mask; }
   setMask(mask: number) { this.imask = mask >>> 0; }
   get pending(): boolean { return (this.imask & this.istat) !== 0; }
   get mask(): number { return this.imask >>> 0; }

@@ -7,10 +7,12 @@ describe('GPU VRAM image load/store via IOHub', () => {
   it('loads a 3x2 rectangle into VRAM and reads it back', () => {
     const gpu = new GPU();
     const io = new IOHub({
-      writeGP0: (v: number) => gpu.writeGP0(v),
-      writeGP1: (v: number) => gpu.writeGP1(v),
-      readGP0: () => gpu.readGP0(),
-      readGP1: () => gpu.readGP1(),
+      gpu: {
+        writeGP0: (v: number) => gpu.writeGP0(v),
+        writeGP1: (v: number) => gpu.writeGP1(v),
+        readGP0: () => gpu.readGP0(),
+        readGP1: () => gpu.readGP1(),
+      }
     });
     const as = new AddressSpace();
     as.addRegion(io);
