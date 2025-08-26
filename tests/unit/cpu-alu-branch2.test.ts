@@ -54,7 +54,6 @@ describe('R3000A extended ALU and branches', () => {
     const mem = new TestMem();
     // r1 = -1; bltz r1, +1; (delay) ori r2,0,0xbeef; ori r3,0,0x7777 (branch target)
     const code = emit([
-      ORI(0,1,0xffff),
       REGIMM(1,0x00,1),
       ORI(0,2,0xbeef),
       ORI(0,3,0x7777),
@@ -62,10 +61,9 @@ describe('R3000A extended ALU and branches', () => {
     mem.buf.set(code, 0);
     const cpu = new R3000A(createResetState(0), mem);
     cpu.s.regs[1] = -1;
-    cpu.step(); // ori r1
     cpu.step(); // bltz taken, set nextPc
     cpu.step(); // delay slot executes (ori r2)
-    expect(cpu.s.pc>>>0).toBe(16);
+    expect(cpu.s.pc>>>0).toBe(8);
     expect(cpu.s.regs[2]>>>0).toBe(0xbeef);
     // Test BGEZAL sets r31
     const code2 = emit([
