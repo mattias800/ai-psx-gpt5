@@ -1,7 +1,7 @@
 import { AddressSpace, createDefaultPSXAddressSpace } from './address-space';
 import type { BIOSProvider } from './memmap';
 import type { Bus } from './bus';
-import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu/src/cpu';
+import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 
 class CPUHostAdapter implements CPUHost {
   constructor(private bus: Bus) {}

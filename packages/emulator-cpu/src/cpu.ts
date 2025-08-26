@@ -265,10 +265,10 @@ export class R3000A {
         } else if (rtField === 0x01) { // BGEZ
           if (r[rs] >= 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
         } else if (rtField === 0x10) { // BLTZAL
-          writeReg(31, this.s.pc);
+          writeReg(31, (this.s.pc + 4) >>> 0);
           if (r[rs] < 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
         } else if (rtField === 0x11) { // BGEZAL
-          writeReg(31, this.s.pc);
+          writeReg(31, (this.s.pc + 4) >>> 0);
           if (r[rs] >= 0) this.s.nextPc = (this.s.pc + offset) >>> 0;
         }
         break;

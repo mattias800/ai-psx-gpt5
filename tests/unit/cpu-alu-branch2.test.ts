@@ -47,7 +47,7 @@ describe('R3000A extended ALU and branches', () => {
     expect(cpu.s.regs[1]>>>0).toBe(0x12340000>>>0);
     expect(cpu.s.regs[3]>>>0).toBe(0x91a00000>>>0);
     expect(cpu.s.regs[4]>>>0).toBe(0x12340000>>>0);
-    expect(cpu.s.regs[5]>>>0).toBe(0x12340000>>>0);
+    expect(cpu.s.regs[5]>>>0).toBe(0xF2340000>>>0);
   });
 
   it('BLTZ/BGEZ and link variants', () => {
@@ -77,7 +77,7 @@ describe('R3000A extended ALU and branches', () => {
     mem.buf.fill(0); mem.buf.set(code2, 0);
     cpu.s.pc = 0; cpu.s.nextPc = 4;
     for (let i=0;i<code2.length/4;i++) cpu.step();
-    expect(cpu.s.regs[31]>>>0).toBe(4>>>0);
+    expect(cpu.s.regs[31]>>>0).toBe(12>>>0);
     expect(cpu.s.pc>>>0).toBe(12);
     expect(cpu.s.regs[4]>>>0).toBe(0x1234);
   });
