@@ -12,13 +12,13 @@
     "test:coverage": "vitest --run --coverage",
     "lint": "eslint . --ext .ts,.tsx,.js,.cjs,.mjs",
     "format": "prettier -w .",
-    "e2e": "echo 'e2e placeholder'"
+    "e2e": "echo 'e2e placeholder'",
+    "prepublishOnly": "npm run -ws build"
   },
   "workspaces": [
     "packages/*",
     "apps/*",
-    "tools/*",
-    "tests/*"
+    "tools/*"
   ],
   "engines": {
     "node": ">=20.0.0"
