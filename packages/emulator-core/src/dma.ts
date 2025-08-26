@@ -97,6 +97,12 @@ export class DMAC {
       return;
     }
 
+    const doWithBusy = (fn: () => void) => {
+      // Set busy bit (assume bit 28) while performing
+      c.chcr |= (1 << 28);
+      try { fn(); } finally { c.chcr &= ~(1 << 28); }
+    };
+
     switch (ch) {
       case 2: { // GPU
         const dmaDir = (this.gpu.readGP1() >>> 29) & 0x3; // 1=FIFO write (CPU->GP0), 2=FIFO read (GPUREAD)
@@ -104,17 +110,24 @@ export class DMAC {
         const canRead = dmaDir === 2;
         if (sync === 0) {
           if (dirFromMem) {
-            if (canWrite) { this.gpuBlock(c, stepDec); performed = true; }
+            if (canWrite) { doWithBusy(() => this.gpuBlock(c, stepDec)); performed = true; }
           } else {
-            if (canRead) { this.gpuBlockToMem(c, stepDec); performed = true; }
+            if (canRead) { doWithBusy(() => this.gpuBlockToMem(c, stepDec)); performed = true; }
+          }
+        } else if (sync === 1) {
+          const blkSize = c.bcr & 0xffff;
+          const blkCount = (c.bcr >>> 16) & 0xffff;
+          if (blkSize > 0 && blkCount > 0) {
+            if (dirFromMem && canWrite) { doWithBusy(() => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec)); performed = true; }
+            else if (!dirFromMem && canRead) { doWithBusy(() => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec)); performed = true; }
           }
         } else if (dirFromMem && sync === 2) {
-          if (canWrite) { this.gpuLinkedList(c); performed = true; }
+          if (canWrite) { doWithBusy(() => this.gpuLinkedList(c)); performed = true; }
         }
         break;
       }
       case 6: // OTC
-        if (!dirFromMem && sync === 0) { this.otcBuild(c); performed = true; }
+        if (!dirFromMem && sync === 0) { doWithBusy(() => this.otcBuild(c)); performed = true; }
         break;
       default:
         // unimplemented for other channels
@@ -184,6 +197,30 @@ export class DMAC {
       this.bus.write32(addr, val >>> 0);
       addr = (addr - 4) >>> 0;
       n--;
+    }
+    c.madr = addr >>> 0;
+  }
+
+  private gpuMode1_FromMem(c: { madr: number; bcr: number; chcr: number }, blkSize: number, blkCount: number, stepDec: boolean) {
+    let addr = c.madr >>> 0;
+    for (let b = 0; b < blkCount; b++) {
+      for (let i = 0; i < blkSize; i++) {
+        const w = this.bus.read32(addr) >>> 0;
+        this.gpu.writeGP0(w);
+        addr = (addr + (stepDec ? -4 : 4)) >>> 0;
+      }
+    }
+    c.madr = addr >>> 0;
+  }
+
+  private gpuMode1_ToMem(c: { madr: number; bcr: number; chcr: number }, blkSize: number, blkCount: number, stepDec: boolean) {
+    let addr = c.madr >>> 0;
+    for (let b = 0; b < blkCount; b++) {
+      for (let i = 0; i < blkSize; i++) {
+        const w = this.gpu.readGP0() >>> 0;
+        this.bus.write32(addr, w);
+        addr = (addr + (stepDec ? -4 : 4)) >>> 0;
+      }
     }
     c.madr = addr >>> 0;
   }
