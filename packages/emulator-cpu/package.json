@@ -10,10 +10,6 @@
     "lint": "eslint src --ext .ts",
     "test": "vitest --run",
     "test:coverage": "vitest --run --coverage"
-  },
-  "dependencies": {
-    "@ai-psx/shared": "workspace:*",
-    "@ai-psx/core": "workspace:*"
   }
 }
 
