@@ -29,9 +29,32 @@ export interface CPUHost {
 
 export class R3000A {
   private cop0 = new Int32Array(32);
-  constructor(public s: CPUState, private mem: CPUHost) {}
+  constructor(public s: CPUState, private mem: CPUHost, private intPending?: () => boolean) {}
+
+  private enterException(vector: number, excCode: number, inDelay: boolean = false) {
+    const sr = this.cop0[12] >>> 0;
+    const cause = (excCode & 0x1f) << 2;
+    this.cop0[13] = (inDelay ? (cause | (1<<31)) : cause) | 0; // CAUSE.BD in bit31 if in delay
+    this.cop0[14] = (this.s.pc >>> 0) | 0; // EPC = current PC
+    // On R3000 exception entry: shift KUc/IEc into KUp/IEp, IEc=0, KUc=0 (kernel)
+    const newMode = ((sr & 0x0f) << 2) & 0x3f;
+    this.cop0[12] = ((sr & ~0x3f) | newMode) | 0;
+    this.s.pc = vector >>> 0;
+    this.s.nextPc = (this.s.pc + 4) >>> 0;
+  }
 
   step(): void {
+    // Handle pending interrupt before fetching next instruction
+    if (this.intPending && this.intPending()) {
+      const sr = this.cop0[12] >>> 0;
+      const IEc = sr & 1;
+      if (IEc) {
+        this.enterException(0x80000080, 0 /*Int*/);
+        this.s.cycles += 1; // cost for exception entry
+        return;
+      }
+    }
+
     const pc = this.s.pc >>> 0;
     const instr = this.mem.read32(pc) >>> 0;
     this.s.pc = this.s.nextPc >>> 0;
