@@ -148,6 +148,62 @@ export class R3000A {
           case 0x2b: // SLTU
             writeReg(rd, (r[rs] >>> 0) < (r[rt] >>> 0) ? 1 : 0);
             break;
+          case 0x10: // MFHI
+            writeReg(rd, this.s.hi | 0);
+            break;
+          case 0x12: // MFLO
+            writeReg(rd, this.s.lo | 0);
+            break;
+          case 0x11: // MTHI
+            this.s.hi = r[rs] | 0;
+            break;
+          case 0x13: // MTLO
+            this.s.lo = r[rs] | 0;
+            break;
+          case 0x18: { // MULT (signed)
+            const a = BigInt(r[rs] | 0);
+            const b = BigInt(r[rt] | 0);
+            const p = a * b;
+            this.s.lo = Number(p & 0xffffffffn) | 0;
+            this.s.hi = Number((p >> 32n) & 0xffffffffn) | 0;
+            break;
+          }
+          case 0x19: { // MULTU (unsigned)
+            const a = BigInt(r[rs] >>> 0);
+            const b = BigInt(r[rt] >>> 0);
+            const p = a * b;
+            this.s.lo = Number(p & 0xffffffffn) | 0;
+            this.s.hi = Number((p >> 32n) & 0xffffffffn) | 0;
+            break;
+          }
+          case 0x1a: { // DIV (signed)
+            const num = r[rs] | 0; const den = r[rt] | 0;
+            if (den === 0) {
+              // Implementation-defined; keep deterministic
+              this.s.lo = num >= 0 ? -1 : 1; // common convention
+              this.s.hi = num | 0;
+            } else if (num === -2147483648 && den === -1) {
+              this.s.lo = -2147483648; this.s.hi = 0;
+            } else {
+              const q = (num / den) | 0; // trunc toward zero
+              const rmd = (num - q * den) | 0;
+              this.s.lo = q | 0; this.s.hi = rmd | 0;
+            }
+            break;
+          }
+          case 0x1b: { // DIVU (unsigned)
+            const num = r[rs] >>> 0; const den = r[rt] >>> 0;
+            if (den === 0) {
+              this.s.lo = -1; // 0xffffffff
+              this.s.hi = num | 0;
+            } else {
+              const q = Math.floor(num / den) >>> 0;
+              const rmd = (num - q * den) >>> 0;
+              this.s.lo = (q | 0);
+              this.s.hi = (rmd | 0);
+            }
+            break;
+          }
           default:
             // reserved - in accuracy pass raise exception
             break;
