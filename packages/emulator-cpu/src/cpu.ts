@@ -49,6 +49,56 @@ export class R3000A {
     const r = this.s.regs;
     const writeReg = (i: number, v: number) => { if (i !== 0) r[i] = v | 0; };
 
+    const addr = (r[rs] + simm) | 0;
+    const lwl = (addr: number, cur: number): number => {
+      const a = addr & ~3;
+      const w = this.mem.read32(a) >>> 0;
+      switch (addr & 3) {
+        case 0: return w | 0;
+        case 1: return ((cur & 0x000000ff) | (w & 0xffffff00)) | 0;
+        case 2: return ((cur & 0x0000ffff) | (w & 0xffff0000)) | 0;
+        case 3: return ((cur & 0x00ffffff) | (w & 0xff000000)) | 0;
+        default: return cur;
+      }
+    };
+    const lwr = (addr: number, cur: number): number => {
+      const a = addr & ~3;
+      const w = this.mem.read32(a) >>> 0;
+      switch (addr & 3) {
+        case 0: return ((cur & 0xffffff00) | (w & 0x000000ff)) | 0;
+        case 1: return ((cur & 0xffff0000) | (w & 0x0000ffff)) | 0;
+        case 2: return ((cur & 0xff000000) | (w & 0x00ffffff)) | 0;
+        case 3: return w | 0;
+        default: return cur;
+      }
+    };
+    const swl = (addr: number, val: number): void => {
+      const a = addr & ~3;
+      const w = this.mem.read32(a) >>> 0;
+      let nw: number;
+      switch (addr & 3) {
+        case 0: nw = val >>> 0; break;
+        case 1: nw = ((w & 0x000000ff) | (val & 0xffffff00)) >>> 0; break;
+        case 2: nw = ((w & 0x0000ffff) | (val & 0xffff0000)) >>> 0; break;
+        case 3: nw = ((w & 0x00ffffff) | (val & 0xff000000)) >>> 0; break;
+        default: nw = w; break;
+      }
+      this.mem.write32(a, nw >>> 0);
+    };
+    const swr = (addr: number, val: number): void => {
+      const a = addr & ~3;
+      const w = this.mem.read32(a) >>> 0;
+      let nw: number;
+      switch (addr & 3) {
+        case 0: nw = ((w & 0xffffff00) | (val & 0x000000ff)) >>> 0; break;
+        case 1: nw = ((w & 0xffff0000) | (val & 0x0000ffff)) >>> 0; break;
+        case 2: nw = ((w & 0xff000000) | (val & 0x00ffffff)) >>> 0; break;
+        case 3: nw = val >>> 0; break;
+        default: nw = w; break;
+      }
+      this.mem.write32(a, nw >>> 0);
+    };
+
     switch (op) {
       case 0x00: { // SPECIAL
         switch (fn) {
@@ -144,8 +194,54 @@ export class R3000A {
       case 0x0b: // SLTIU
         writeReg(rt, (r[rs] >>> 0) < (imm >>> 0) ? 1 : 0);
         break;
+      case 0x20: { // LB
+        const v = this.mem.read8(addr) & 0xff;
+        writeReg(rt, (v << 24) >> 24);
+        break;
+      }
+      case 0x24: { // LBU
+        const v = this.mem.read8(addr) & 0xff;
+        writeReg(rt, v >>> 0);
+        break;
+      }
+      case 0x21: { // LH
+        const v = this.mem.read16(addr) & 0xffff;
+        writeReg(rt, (v << 16) >> 16);
+        break;
+      }
+      case 0x25: { // LHU
+        const v = this.mem.read16(addr) & 0xffff;
+        writeReg(rt, v >>> 0);
+        break;
+      }
+      case 0x23: { // LW
+        const v = this.mem.read32(addr) >>> 0;
+        writeReg(rt, v | 0);
+        break;
+      }
+      case 0x28: // SB
+        this.mem.write8(addr, r[rt] & 0xff);
+        break;
+      case 0x29: // SH
+        this.mem.write16(addr, r[rt] & 0xffff);
+        break;
+      case 0x2b: // SW
+        this.mem.write32(addr, r[rt] >>> 0);
+        break;
+      case 0x22: // LWL
+        writeReg(rt, lwl(addr, r[rt]));
+        break;
+      case 0x26: // LWR
+        writeReg(rt, lwr(addr, r[rt]));
+        break;
+      case 0x2a: // SWL
+        swl(addr, r[rt]);
+        break;
+      case 0x2e: // SWR
+        swr(addr, r[rt]);
+        break;
       default:
-        // loads/stores and others in later steps
+        // unimplemented
         break;
     }
     this.s.regs[0] = 0; // enforce r0
