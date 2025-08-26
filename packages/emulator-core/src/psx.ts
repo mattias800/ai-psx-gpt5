@@ -3,6 +3,7 @@ import { EventScheduler, InterruptController } from './timing';
 import { DisplayController } from './display';
 import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 import { GPU } from '../../emulator-gpu/src/gpu';
+import { DMAC } from './dma';
 
 class CPUHostBus implements CPUHost {
   constructor(private as: AddressSpace) {}
@@ -22,9 +23,13 @@ export class PSXSystem {
   public readonly ram = new MappedRAM(0x00000000, 2 * 1024 * 1024);
   public readonly iohub: IOHub;
   public readonly cpu: R3000A;
+  public readonly dmac: DMAC;
   public display?: DisplayController;
 
   constructor() {
+    // Initialize DMAC before IOHub so we can pass it into devs
+    this.dmac = new DMAC(this.as, this.gpu, this.intc);
+
     const devs: IODevices = {
       gpu: {
         writeGP0: (v) => this.gpu.writeGP0(v),
@@ -38,6 +43,7 @@ export class PSXSystem {
         writeMask: (v: number) => this.intc.setMask(v),
         ackMask: (v: number) => this.intc.ackMask(v),
       },
+      dma: { read32: (a:number)=>this.dmac.read32(a), write32: (a:number,v:number)=>this.dmac.write32(a,v) },
     };
     this.iohub = new IOHub(devs);
     this.as.addRegion(this.ram);

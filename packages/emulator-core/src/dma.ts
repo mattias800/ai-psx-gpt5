@@ -1,5 +1,6 @@
 import type { Bus } from './bus';
 import type { GPURegs } from './address-space';
+import { InterruptController, IRQ } from './timing';
 
 export class DMAController {
   constructor(private bus: Bus, private gpu: GPURegs) {}
@@ -25,9 +26,9 @@ export class DMAController {
 export class DMAC {
   private channels: { madr: number; bcr: number; chcr: number }[] = Array.from({ length: 7 }, () => ({ madr: 0, bcr: 0, chcr: 0 }));
   private dpcr = 0xffffffff >>> 0; // default all enabled (for simplicity)
-  private dicr = 0 >>> 0; // IRQ control (shadow only for now)
+  private dicr = 0 >>> 0; // IRQ control (shadow)
 
-  constructor(private bus: Bus, private gpu: GPURegs) {}
+  constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController) {}
 
   read32(addr: number): number {
     const a = addr >>> 0;
@@ -65,7 +66,18 @@ export class DMAC {
       return;
     }
     if (a === 0x1f8010f0) { this.dpcr = v >>> 0; return; }
-    if (a === 0x1f8010f4) { this.dicr = v >>> 0; return; }
+    if (a === 0x1f8010f4) {
+      // DICR write: update enables (bits0..6) and master enable (bit24),
+      // clear per-channel flags (bits16..22) and master flag (bit23) when written as 1
+      let d = this.dicr >>> 0;
+      const clrFlags = (v >>> 16) & 0x7f; // bits16..22
+      d &= ~((clrFlags & 0x7f) << 16);
+      if (v & (1<<23)) d &= ~(1<<23); // clear master flag on write-1
+      d = (d & ~0x7f) | (v & 0x7f); // channel enables
+      d = (d & ~(1<<24)) | (v & (1<<24)); // master enable
+      this.dicr = d >>> 0;
+      return;
+    }
   }
 
   private runChannel(ch: number) {
@@ -90,6 +102,17 @@ export class DMAC {
     }
     // clear start bit
     c.chcr &= ~(1 << 24);
+
+    // IRQ signaling via DICR/INTC
+    const chMask = 1 << ch;
+    const chFlagMask = 1 << (16 + ch);
+    const masterEnable = (this.dicr & (1<<24)) !== 0;
+    const chEnabled = (this.dicr & chMask) !== 0;
+    if (masterEnable && chEnabled) {
+      this.dicr |= chFlagMask;
+      this.dicr |= (1<<23); // master flag
+      this.intc?.raise(IRQ.DMA);
+    }
   }
 
   private gpuBlock(c: { madr: number; bcr: number; chcr: number }, stepDec: boolean) {
