@@ -53,6 +53,7 @@ describe('COP0 basic', () => {
       MFC0(2,12),
     ]);
     mem.buf.fill(0); mem.buf.set(code2, 0);
+    cpu.s.pc = 0; cpu.s.nextPc = 4;
     for (let i=0;i<code2.length/4;i++) cpu.step();
     expect(cpu['cop0'][12] & 0x3f).toBe(0x06);
     expect(cpu.s.regs[2] & 0x3f).toBe(0x06);
