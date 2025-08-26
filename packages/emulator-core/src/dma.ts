@@ -27,6 +27,8 @@ export class DMAC {
   private channels: { madr: number; bcr: number; chcr: number }[] = Array.from({ length: 7 }, () => ({ madr: 0, bcr: 0, chcr: 0 }));
   private dpcr = 0xffffffff >>> 0; // default all enabled (for simplicity)
   private dicr = 0 >>> 0; // IRQ control (shadow)
+  private activeCh: number = -1;
+  private pending: Array<{ ch: number; words: number; work: () => void }> = [];
 
   constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController, private sch?: EventScheduler, private cyclesPerWord: number = 0) {}
 
@@ -103,22 +105,25 @@ export class DMAC {
       try { fn(); } finally { c.chcr &= ~(1 << 28); }
     };
 
-    const scheduleOrRun = (words: number, work: () => void): boolean => {
-      if (this.sch && this.cyclesPerWord > 0 && words > 0) {
-        // async path: set busy, clear start now, perform later
-        c.chcr |= (1 << 28);
-        c.chcr &= ~(1 << 24);
-        this.sch.schedule(this.cyclesPerWord * words, () => {
-          try {
-            work();
-          } finally {
-            c.chcr &= ~(1 << 28);
-            this.raiseIrqIfEnabled(ch);
-          }
-        });
-        return true;
-      }
-      return false;
+    const tryStartAsync = (words: number, work: () => void): boolean => {
+      if (!(this.sch && this.cyclesPerWord > 0 && words > 0)) return false;
+      // Clear start bit immediately
+      c.chcr &= ~(1 << 24);
+      const enqueue = () => { this.pending.push({ ch, words, work }); };
+      if (this.activeCh !== -1) { enqueue(); return true; }
+      // Start now
+      this.activeCh = ch;
+      c.chcr |= (1 << 28);
+      const total = this.computeTotalCycles(words);
+      this.sch!.schedule(total, () => {
+        try { work(); } finally {
+          c.chcr &= ~(1 << 28);
+          this.raiseIrqIfEnabled(ch);
+          this.activeCh = -1;
+          this.startNextPending();
+        }
+      });
+      return true;
     };
 
     switch (ch) {
@@ -130,13 +135,13 @@ export class DMAC {
           if (dirFromMem) {
             if (canWrite) {
               const words = c.bcr & 0xffff;
-              if (scheduleOrRun(words, () => this.gpuBlock(c, stepDec))) return;
+              if (tryStartAsync(words, () => this.gpuBlock(c, stepDec))) return;
               doWithBusy(() => this.gpuBlock(c, stepDec)); performed = true;
             }
           } else {
             if (canRead) {
               const words = c.bcr & 0xffff;
-              if (scheduleOrRun(words, () => this.gpuBlockToMem(c, stepDec))) return;
+              if (tryStartAsync(words, () => this.gpuBlockToMem(c, stepDec))) return;
               doWithBusy(() => this.gpuBlockToMem(c, stepDec)); performed = true;
             }
           }
@@ -146,11 +151,11 @@ export class DMAC {
           if (blkSize > 0 && blkCount > 0) {
             const words = blkSize * blkCount;
             if (dirFromMem && canWrite) {
-              if (scheduleOrRun(words, () => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec))) return;
+              if (tryStartAsync(words, () => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec))) return;
               doWithBusy(() => this.gpuMode1_FromMem(c, blkSize, blkCount, stepDec)); performed = true;
             }
             else if (!dirFromMem && canRead) {
-              if (scheduleOrRun(words, () => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec))) return;
+              if (tryStartAsync(words, () => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec))) return;
               doWithBusy(() => this.gpuMode1_ToMem(c, blkSize, blkCount, stepDec)); performed = true;
             }
           }
@@ -160,7 +165,11 @@ export class DMAC {
         break;
       }
       case 6: // OTC
-        if (!dirFromMem && sync === 0) { doWithBusy(() => this.otcBuild(c)); performed = true; }
+        if (!dirFromMem && sync === 0) {
+          const words = c.bcr & 0xffff;
+          if (tryStartAsync(words, () => this.otcBuild(c))) return;
+          doWithBusy(() => this.otcBuild(c)); performed = true;
+        }
         break;
       default:
         // unimplemented for other channels
@@ -183,6 +192,36 @@ export class DMAC {
       this.dicr |= (1<<23);
       this.intc?.raise(IRQ.DMA);
     }
+  }
+
+  private getPriority(ch: number): number {
+    return (this.dpcr >>> (8 + ch*3)) & 0x7;
+  }
+
+  private startNextPending() {
+    if (!(this.sch && this.cyclesPerWord > 0)) return;
+    if (this.activeCh !== -1) return;
+    if (this.pending.length === 0) return;
+    // pick highest priority
+    let bestIdx = 0; let bestPrio = -1;
+    for (let i=0;i<this.pending.length;i++) { const p = this.getPriority(this.pending[i].ch); if (p > bestPrio) { bestPrio=p; bestIdx=i; } }
+    const next = this.pending.splice(bestIdx,1)[0];
+    const nc = this.channels[next.ch];
+    this.activeCh = next.ch;
+    nc.chcr |= (1<<28);
+    const total = this.computeTotalCycles(next.words);
+    this.sch!.schedule(total, () => { try { next.work(); } finally { nc.chcr&=~(1<<28); this.raiseIrqIfEnabled(next.ch); this.activeCh=-1; this.startNextPending(); } });
+  }
+
+  private computeTotalCycles(words: number): number {
+    if (!(this.sch && this.cyclesPerWord > 0)) return 0;
+    const chopLog2 = (this.dpcr >>> 29) & 0x7;
+    const windowWords = chopLog2 ? (1 << chopLog2) : 0;
+    const base = words * this.cyclesPerWord;
+    if (!windowWords) return base;
+    const windows = Math.ceil(words / windowWords);
+    const cpuPause = windowWords * this.cyclesPerWord;
+    return base + (windows - 1) * cpuPause;
   }
 
   private gpuBlock(c: { madr: number; bcr: number; chcr: number }, stepDec: boolean) {
