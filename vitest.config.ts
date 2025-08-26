@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@ai-psx/shared': path.resolve(__dirname, 'packages/emulator-shared/src/index.ts'),
+      '@ai-psx/cpu': path.resolve(__dirname, 'packages/emulator-cpu/src/cpu.ts'),
     },
   },
   test: {
