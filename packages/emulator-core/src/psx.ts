@@ -1,18 +1,31 @@
-import { AddressSpace, IOHub, MappedRAM, type GPURegs, type IODevices, type TimerPort } from './address-space';
+import { AddressSpace, IOHub, MappedRAM, type IODevices } from './address-space';
 import { EventScheduler, InterruptController } from './timing';
 import { DisplayController } from './display';
 import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 import { GPU } from '../../emulator-gpu/src/gpu';
+import { SPU } from '../../emulator-spu/src/spu';
 import { DMAC } from './dma';
 
 class CPUHostBus implements CPUHost {
   constructor(private as: AddressSpace) {}
-  read32(a: number): number { return this.as.read32(a); }
-  read16(a: number): number { return this.as.read16(a); }
-  read8(a: number): number { return this.as.read8(a); }
-  write32(a: number, v: number): void { this.as.write32(a, v>>>0); }
-  write16(a: number, v: number): void { this.as.write16(a, v>>>0); }
-  write8(a: number, v: number): void { this.as.write8(a, v>>>0); }
+  read32(a: number): number {
+    return this.as.read32(a);
+  }
+  read16(a: number): number {
+    return this.as.read16(a);
+  }
+  read8(a: number): number {
+    return this.as.read8(a);
+  }
+  write32(a: number, v: number): void {
+    this.as.write32(a, v >>> 0);
+  }
+  write16(a: number, v: number): void {
+    this.as.write16(a, v >>> 0);
+  }
+  write8(a: number, v: number): void {
+    this.as.write8(a, v >>> 0);
+  }
 }
 
 export class PSXSystem {
@@ -24,6 +37,7 @@ export class PSXSystem {
   public readonly iohub: IOHub;
   public readonly cpu: R3000A;
   public readonly dmac: DMAC;
+  public readonly spu = new SPU();
   public display?: DisplayController;
 
   constructor() {
@@ -43,7 +57,14 @@ export class PSXSystem {
         writeMask: (v: number) => this.intc.setMask(v),
         ackMask: (v: number) => this.intc.ackMask(v),
       },
-      dma: { read32: (a:number)=>this.dmac.read32(a), write32: (a:number,v:number)=>this.dmac.write32(a,v) },
+      dma: {
+        read32: (a: number) => this.dmac.read32(a),
+        write32: (a: number, v: number) => this.dmac.write32(a, v),
+      },
+      spu: {
+        read16: (a: number) => this.spu.read16(a),
+        write16: (a: number, v: number) => this.spu.write16(a, v),
+      },
     };
     this.iohub = new IOHub(devs);
     this.as.addRegion(this.ram);
@@ -70,4 +91,3 @@ export class PSXSystem {
     this.sch.step(cycles);
   }
 }
-

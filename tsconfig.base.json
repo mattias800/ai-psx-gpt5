@@ -19,9 +19,10 @@
     "baseUrl": ".",
     "paths": {
       "@ai-psx/shared": ["packages/emulator-shared/src/index.ts"],
-      "@ai-psx/cpu": ["packages/emulator-cpu/src/cpu.ts"]
+      "@ai-psx/cpu": ["packages/emulator-cpu/src/cpu.ts"],
+      "@ai-psx/spu": ["packages/emulator-spu/src/index.ts"],
+      "@ai-psx/core": ["packages/emulator-core/src/psx.ts"]
     }
   },
   "include": []
 }
-
