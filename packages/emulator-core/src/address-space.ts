@@ -20,14 +20,43 @@ export class MappedRAM implements MemoryRegion {
   write32(addr: number, v: number): void { const i=this.idx(addr); const d=this.data; d[i]=v&0xff; d[(i+1)&(this.size-1)]=(v>>>8)&0xff; d[(i+2)&(this.size-1)]=(v>>>16)&0xff; d[(i+3)&(this.size-1)]=(v>>>24)&0xff; }
 }
 
-export class IOStubRegion implements MemoryRegion {
+export interface GPURegs {
+  writeGP0(val: number): void;
+  writeGP1(val: number): void;
+  readGP0(): number;
+  readGP1(): number;
+}
+
+export class IOHub implements MemoryRegion {
+  constructor(private gpu: GPURegs) {}
   contains(addr: number): boolean { const p = toPhysical(addr); return p >= 0x1f801000 && p <= 0x1f803fff; }
-  read8(_addr: number): number { return 0; }
-  read16(_addr: number): number { return 0; }
-  read32(_addr: number): number { return 0; }
-  write8(_addr: number, _v: number): void {}
-  write16(_addr: number, _v: number): void {}
-  write32(_addr: number, _v: number): void {}
+  read8(addr: number): number { const v = this.read32(addr); return (v >>> ((addr & 3) * 8)) & 0xff; }
+  read16(addr: number): number { const v = this.read32(addr); return (v >>> ((addr & 2) * 8)) & 0xffff; }
+  read32(addr: number): number {
+    const p = toPhysical(addr);
+    switch (p) {
+      case 0x1f801810: // GPUREAD (GP0 read)
+        return this.gpu.readGP0() >>> 0;
+      case 0x1f801814: // GPUSTAT (GP1 read)
+        return this.gpu.readGP1() >>> 0;
+      default:
+        return 0;
+    }
+  }
+  write8(addr: number, v: number): void { const shift = (addr & 3) * 8; const cur = this.read32(addr); const nv = (cur & ~(0xff << shift)) | ((v & 0xff) << shift); this.write32(addr & ~3, nv >>> 0); }
+  write16(addr: number, v: number): void { const shift = (addr & 2) * 8; const cur = this.read32(addr); const nv = (cur & ~(0xffff << shift)) | ((v & 0xffff) << shift); this.write32(addr & ~3, nv >>> 0); }
+  write32(addr: number, v: number): void {
+    const p = toPhysical(addr);
+    switch (p) {
+      case 0x1f801810: // GP0
+        this.gpu.writeGP0(v >>> 0); break;
+      case 0x1f801814: // GP1
+        this.gpu.writeGP1(v >>> 0); break;
+      default:
+        // ignore
+        break;
+    }
+  }
 }
 
 export class AddressSpace implements Bus {
@@ -47,12 +76,14 @@ export class AddressSpace implements Bus {
   storeBlock(addr: number, data: Uint8Array): void { for (let i=0;i<data.length;i++) this.write8(addr+i, data[i]); }
 }
 
-export function createDefaultPSXAddressSpace(bios: BIOSProvider): AddressSpace {
+export function createDefaultPSXAddressSpace(bios: BIOSProvider, io?: IOHub): AddressSpace {
   const as = new AddressSpace();
   as.addRegion(new MappedRAM(0x00000000, 2 * 1024 * 1024)); // 2MB RAM
   as.addRegion(new MappedRAM(0x1f800000, 1024)); // 1KB scratchpad
   as.addRegion(new BIOSRegion(bios));
-  as.addRegion(new IOStubRegion());
+  as.addRegion(io ?? new IOHub({
+    writeGP0: () => {}, writeGP1: () => {}, readGP0: () => 0, readGP1: () => 0,
+  }));
   return as;
 }
 
