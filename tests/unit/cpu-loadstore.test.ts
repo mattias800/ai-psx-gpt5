@@ -44,10 +44,8 @@ describe('R3000A loads/stores', () => {
     // Set base in r1 = 100
     const code = emit([
       ORI(0,1,100),
-      // stores from r2 value 0x8899AABB
-      ORI(0,2,0xAABB), // low 16
-      // high 16 into place via ORI r0,r3 + shifts not implemented; write via SW after we write full mem directly
-      SW(1,2,0),
+      // loads from preset memory word 0x8899AABB
+      ORI(0,2,0xAABB), // prepare a value for later stores (not used yet)
       LB(1,3,0), // should sign-extend 0xBB -> -0x45
       LBU(1,4,0), // 0xBB
       LH(1,5,0), // 0xAABB -> -0x5545
@@ -93,7 +91,7 @@ describe('R3000A loads/stores', () => {
       LWL(1,2,1),      // b=1: expect bytes 1..3 loaded -> high 3 bytes
       LWR(1,2,0),      // b=0: expect byte0 loaded -> complete word 0x44332211
     ]);
-    mem.buf.fill(0); mem.buf.set(code, 0);
+    mem.buf.set(code, 0);
     const cpu = new R3000A(createResetState(0), mem);
     for (let i = 0; i < code.length/4; i++) cpu.step();
     expect(cpu.s.regs[2] >>> 0).toBe(0x44332211 >>> 0);
