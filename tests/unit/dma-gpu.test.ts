@@ -36,7 +36,7 @@ describe('DMAController -> GPU GP0 streaming', () => {
     }
 
     // DMA transfer words to GPU GP0
-    const dma = new DMAController(as, io as any);
+    const dma = new DMAController(as, gpu as any);
     dma.transferToGPU(base, words.length);
 
     // Read back via Image Store
