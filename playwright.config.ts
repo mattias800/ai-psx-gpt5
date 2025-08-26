@@ -11,7 +11,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npm run -w apps/host-chrome preview',
+    command: 'npm run -w apps/host-chrome dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
