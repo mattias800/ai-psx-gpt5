@@ -26,5 +26,8 @@ export class HWTimer {
     }
     this.count = c;
   }
+
+  serialize(): any { return { count: this.count & 0xffff, target: this.target & 0xffff, mode: this.mode>>>0, irq: !!this.irq, clockDiv: this.clockDiv|0 }; }
+  deserialize(s: any): void { this.count = (s.count|0) & 0xffff; this.target = (s.target|0) & 0xffff; this.mode = s.mode>>>0; this.irq = !!s.irq; /* clockDiv immutable */ }
 }
 

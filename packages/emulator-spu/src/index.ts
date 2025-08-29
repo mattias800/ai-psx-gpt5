@@ -1,2 +1,2 @@
-export * from './spu';
+export { SPU } from './spu';
 export * from './adpcm';

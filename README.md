@@ -11,4 +11,6 @@ Legal: BIOS and game images are not included. CI can optionally fetch them from 
 
 Documentation
 - GTE model: docs/GTE.md
+- CDROM subsystem: docs/CDROM.md
+- CDROM developer guide: docs/CDROM-Guide.md
 

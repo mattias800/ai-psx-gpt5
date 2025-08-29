@@ -517,5 +517,37 @@ export class GPU {
       }
     }
   }
+
+  // Snapshot/restore for determinism and tests
+  serialize(): any {
+    return {
+      status: this.status>>>0,
+      inCmd: this.inCmd|0,
+      parmWordsNeeded: this.parmWordsNeeded|0,
+      parms: Array.from(this.parms),
+      imageWordsRemaining: this.imageWordsRemaining|0,
+      imageStoreQueue: Array.from(this.imageStoreQueue),
+      clipLeft: this.clipLeft|0, clipTop: this.clipTop|0, clipRight: this.clipRight|0, clipBottom: this.clipBottom|0,
+      drawOffX: this.drawOffX|0, drawOffY: this.drawOffY|0,
+      texBaseX: this.texBaseX|0, texBaseY: this.texBaseY|0,
+      texAddrWrap: !!this.texAddrWrap,
+      texW: this.texW|0, texH: this.texH|0,
+      vram: Array.from(this.vram),
+    };
+  }
+  deserialize(s: any): void {
+    this.status = s.status>>>0;
+    this.inCmd = s.inCmd|0;
+    this.parmWordsNeeded = s.parmWordsNeeded|0;
+    this.parms = Array.isArray(s.parms) ? s.parms.slice() : [];
+    this.imageWordsRemaining = s.imageWordsRemaining|0;
+    this.imageStoreQueue = Array.isArray(s.imageStoreQueue) ? s.imageStoreQueue.slice() : [];
+    this.clipLeft = s.clipLeft|0; this.clipTop = s.clipTop|0; this.clipRight = s.clipRight|0; this.clipBottom = s.clipBottom|0;
+    this.drawOffX = s.drawOffX|0; this.drawOffY = s.drawOffY|0;
+    this.texBaseX = s.texBaseX|0; this.texBaseY = s.texBaseY|0;
+    this.texAddrWrap = !!s.texAddrWrap;
+    this.texW = s.texW|0; this.texH = s.texH|0;
+    if (Array.isArray(s.vram)) this.vram = Uint16Array.from(s.vram.map((x:number)=>x & 0xffff));
+  }
 }
 

@@ -85,6 +85,8 @@ export interface IODevices {
   timers?: [TimerPort, TimerPort, TimerPort];
   dma?: { read32(addr: number): number; write32(addr: number, v: number): void };
   spu?: { read16(addr: number): number; write16(addr: number, v: number): void };
+  sio?: { read8(addr: number): number; write8(addr: number, v: number): void };
+  cdrom?: { read8(addr: number): number; write8(addr: number, v: number): void };
 }
 
 export class IOHub implements MemoryRegion {
@@ -94,10 +96,36 @@ export class IOHub implements MemoryRegion {
     return p >= 0x1f801000 && p <= 0x1f803fff;
   }
   read8(addr: number): number {
+    const p = toPhysical(addr);
+    // SIO0 byte range: 0x1f801040..0x1f80105f
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      return (this.devs.sio?.read8(p) ?? 0) & 0xff;
+    }
+    // CDROM 0x1f801800..0x1f801803 (4 bytes)
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      return (this.devs.cdrom?.read8(p) ?? 0) & 0xff;
+    }
     const v = this.read32(addr);
     return (v >>> ((addr & 3) * 8)) & 0xff;
   }
   read16(addr: number): number {
+    const p = toPhysical(addr);
+    // SPU: direct 16-bit access to avoid data port side effects from 32-bit aggregation
+    if (p >= 0x1f801c00 && p <= 0x1f801dff) {
+      return (this.devs.spu?.read16(p) ?? 0) & 0xffff;
+    }
+    // SIO: read two bytes via byte interface
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      const lo = this.devs.sio?.read8(p) ?? 0;
+      const hi = this.devs.sio?.read8((p + 1) >>> 0) ?? 0;
+      return ((lo & 0xff) | ((hi & 0xff) << 8)) & 0xffff;
+    }
+    // CDROM: two bytes
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      const lo = this.devs.cdrom?.read8(p) ?? 0;
+      const hi = this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0;
+      return ((lo & 0xff) | ((hi & 0xff) << 8)) & 0xffff;
+    }
     const base = addr & ~3;
     const v = this.read32(base);
     return (v >>> ((addr & 2) * 8)) & 0xffff;
@@ -105,6 +133,22 @@ export class IOHub implements MemoryRegion {
   read32(addr: number): number {
     const p = toPhysical(addr);
     const t = this.devs.timers;
+    // SIO region handled by byte reads/aggregation
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      const b0 = this.devs.sio?.read8(p) ?? 0;
+      const b1 = this.devs.sio?.read8((p + 1) >>> 0) ?? 0;
+      const b2 = this.devs.sio?.read8((p + 2) >>> 0) ?? 0;
+      const b3 = this.devs.sio?.read8((p + 3) >>> 0) ?? 0;
+      return (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) >>> 0;
+    }
+    // CDROM region handled by byte aggregation
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      const b0 = this.devs.cdrom?.read8(p) ?? 0;
+      const b1 = this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0;
+      const b2 = this.devs.cdrom?.read8((p + 2) >>> 0) ?? 0;
+      const b3 = this.devs.cdrom?.read8((p + 3) >>> 0) ?? 0;
+      return (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) >>> 0;
+    }
     switch (p) {
       // INTC
       case 0x1f801070:
@@ -150,12 +194,39 @@ export class IOHub implements MemoryRegion {
     }
   }
   write8(addr: number, v: number): void {
+    const p = toPhysical(addr);
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      this.devs.sio?.write8(p, v & 0xff);
+      return;
+    }
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      this.devs.cdrom?.write8(p, v & 0xff);
+      return;
+    }
     const shift = (addr & 3) * 8;
     const cur = this.read32(addr);
     const nv = (cur & ~(0xff << shift)) | ((v & 0xff) << shift);
     this.write32(addr & ~3, nv >>> 0);
   }
   write16(addr: number, v: number): void {
+    const p = toPhysical(addr);
+    // SPU: direct 16-bit access
+    if (p >= 0x1f801c00 && p <= 0x1f801dff) {
+      this.devs.spu?.write16(p, v & 0xffff);
+      return;
+    }
+    // SIO: split into two byte writes
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      this.devs.sio?.write8(p, v & 0xff);
+      this.devs.sio?.write8((p + 1) >>> 0, (v >>> 8) & 0xff);
+      return;
+    }
+    // CDROM: split low/high byte
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      this.devs.cdrom?.write8(p, v & 0xff);
+      this.devs.cdrom?.write8((p + 1) >>> 0, (v >>> 8) & 0xff);
+      return;
+    }
     const base = addr & ~3;
     const shift = (addr & 2) * 8;
     const cur = this.read32(base);
@@ -165,6 +236,22 @@ export class IOHub implements MemoryRegion {
   write32(addr: number, v: number): void {
     const p = toPhysical(addr);
     const t = this.devs.timers;
+    // SIO: split into four byte writes
+    if (p >= 0x1f801040 && p <= 0x1f80105f) {
+      this.devs.sio?.write8(p, v & 0xff);
+      this.devs.sio?.write8((p + 1) >>> 0, (v >>> 8) & 0xff);
+      this.devs.sio?.write8((p + 2) >>> 0, (v >>> 16) & 0xff);
+      this.devs.sio?.write8((p + 3) >>> 0, (v >>> 24) & 0xff);
+      return;
+    }
+    // CDROM
+    if (p >= 0x1f801800 && p <= 0x1f801803) {
+      this.devs.cdrom?.write8(p, v & 0xff);
+      this.devs.cdrom?.write8((p + 1) >>> 0, (v >>> 8) & 0xff);
+      this.devs.cdrom?.write8((p + 2) >>> 0, (v >>> 16) & 0xff);
+      this.devs.cdrom?.write8((p + 3) >>> 0, (v >>> 24) & 0xff);
+      return;
+    }
     switch (p) {
       // INTC
       case 0x1f801070:

@@ -32,7 +32,12 @@ import { GTE } from './gte';
 export class R3000A {
   private cop0 = new Int32Array(32);
   private gte = new GTE();
+  private tracer?: (pc: number, instr: number, s: CPUState) => void;
   constructor(public s: CPUState, private mem: CPUHost, private intPending?: () => boolean) {}
+
+  setTracer(tr?: (pc: number, instr: number, s: CPUState) => void) {
+    this.tracer = tr;
+  }
 
   private enterException(vector: number, excCode: number, inDelay: boolean = false) {
     const sr = this.cop0[12] >>> 0;
@@ -60,6 +65,7 @@ export class R3000A {
 
     const pc = this.s.pc >>> 0;
     const instr = this.mem.read32(pc) >>> 0;
+    if (this.tracer) this.tracer(pc >>> 0, instr >>> 0, this.s);
     this.s.pc = this.s.nextPc >>> 0;
     this.s.nextPc = (this.s.pc + 4) >>> 0;
 

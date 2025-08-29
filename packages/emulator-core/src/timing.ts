@@ -118,5 +118,7 @@ export class InterruptController {
   get pending(): boolean { return (this.imask & this.istat) !== 0; }
   get mask(): number { return this.imask >>> 0; }
   get status(): number { return this.istat >>> 0; }
+  serialize(): any { return { imask: this.imask>>>0, istat: this.istat>>>0 }; }
+  deserialize(s: any): void { this.imask = s.imask>>>0; this.istat = s.istat>>>0; }
 }
 

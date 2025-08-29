@@ -21,7 +21,26 @@
     "es2022": true,
     "node": true
   },
-  "ignorePatterns": ["dist", "node_modules", "coverage"],
+  "ignorePatterns": ["dist", "node_modules", "coverage", "**/dist/**"],
+  "overrides": [
+    {
+      "files": ["apps/**/*.ts", "apps/**/*.js"],
+      "env": { "browser": true, "webworker": true }
+    },
+    {
+      "files": ["tests/**/*.ts"],
+      "env": { "browser": true },
+      "rules": {
+        "@typescript-eslint/no-unused-vars": "off",
+        "no-undef": "off"
+      }
+    },
+    {
+      "files": ["tools/**/*.mjs"],
+      "env": { "node": true },
+      "globals": { "setTimeout": "readonly" }
+    }
+  ],
   "rules": {
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
