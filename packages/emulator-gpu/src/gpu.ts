@@ -2,8 +2,15 @@ export class GPU {
   // 1MB VRAM: 1024x512 16bpp
   vram = new Uint16Array(1024 * 512);
 
-  // Status register (minimal)
-  status = 0x1c000000; // basic status init value placeholder
+  // Status register (power-on default)
+  // Many references report GPUSTAT initializes to 0x1c000000 on PS1 hardware.
+  // Use that canonical value to better match BIOS expectations.
+  status = 0x1c000000;
+  
+  // Get VRAM contents for frame capture
+  getVRAM(): Uint16Array {
+    return this.vram;
+  }
 
   // GP0 command decoding state
   private inCmd = 0; // current GP0 command opcode (low 8 bits)
@@ -226,7 +233,7 @@ export class GPU {
   }
 
   private reset() {
-    this.status = 0x1c000000;
+    this.status = 0x1c000000;  // Use same value as power-on default
     this.inCmd = 0;
     this.parms.length = 0;
     this.parmWordsNeeded = 0;

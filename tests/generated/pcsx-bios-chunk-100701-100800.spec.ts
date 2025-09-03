@@ -1,0 +1,606 @@
+import { describe, it, expect, beforeAll } from 'vitest';
+import { initOnce, getPC, readU32, getRegU32, stepOne } from './_harness';
+
+describe('PCSX-Redux BIOS trace: chunk 100701-100800', () => {
+  beforeAll(() => initOnce());
+  it('[100701] PC 0x00004110 instr 0xac2b8910', () => {
+    const pc = 0x4110;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xac2b8910 >>> 0);
+    stepOne();
+  });
+  it('[100702] PC 0x00004114 instr 0x24040001', () => {
+    const pc = 0x4114;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x24040001 >>> 0);
+    stepOne();
+  });
+  it('[100703] PC 0x00004118 instr 0x27a50018', () => {
+    const pc = 0x4118;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x27a50018 >>> 0);
+    stepOne();
+  });
+  it('[100704] PC 0x0000411c instr 0x0c000b25', () => {
+    const pc = 0x411c;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xc000b25 >>> 0);
+    stepOne();
+  });
+  it('[100705] PC 0x00004120 instr 0x24060001', () => {
+    const pc = 0x4120;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x24060001 >>> 0);
+    stepOne();
+  });
+  it('[100706] PC 0x00002c94 instr 0x27bdffd8', () => {
+    const pc = 0x2c94;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x27bdffd8 >>> 0);
+    stepOne();
+  });
+  it('[100707] PC 0x00002c98 instr 0xafbf001c', () => {
+    const pc = 0x2c98;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafbf001c >>> 0);
+    stepOne();
+  });
+  it('[100708] PC 0x00002c9c instr 0xafa5002c', () => {
+    const pc = 0x2c9c;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafa5002c >>> 0);
+    stepOne();
+  });
+  it('[100709] PC 0x00002ca0 instr 0x0c000c32', () => {
+    const pc = 0x2ca0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xc000c32 >>> 0);
+    stepOne();
+  });
+  it('[100710] PC 0x00002ca4 instr 0xafa60030', () => {
+    const pc = 0x2ca4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafa60030 >>> 0);
+    stepOne();
+  });
+  it('[100711] PC 0x000030c8 instr 0x04800003', () => {
+    const pc = 0x30c8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x4800003 >>> 0);
+    stepOne();
+  });
+  it('[100712] PC 0x000030cc instr 0x28810010', () => {
+    const pc = 0x30cc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x28810010 >>> 0);
+    stepOne();
+  });
+  it('[100713] PC 0x000030d0 instr 0x14200004', () => {
+    const pc = 0x30d0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x14200004 >>> 0);
+    stepOne();
+  });
+  it('[100714] PC 0x000030d4 instr 0x00047080', () => {
+    const pc = 0x30d4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x47080 >>> 0);
+    stepOne();
+  });
+  it('[100715] PC 0x000030e4 instr 0x01c47023', () => {
+    const pc = 0x30e4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1c47023 >>> 0);
+    stepOne();
+  });
+  it('[100716] PC 0x000030e8 instr 0x000e7080', () => {
+    const pc = 0x30e8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xe7080 >>> 0);
+    stepOne();
+  });
+  it('[100717] PC 0x000030ec instr 0x01c47023', () => {
+    const pc = 0x30ec;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1c47023 >>> 0);
+    stepOne();
+  });
+  it('[100718] PC 0x000030f0 instr 0x3c0f0001', () => {
+    const pc = 0x30f0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x3c0f0001 >>> 0);
+    stepOne();
+  });
+  it('[100719] PC 0x000030f4 instr 0x25ef8648', () => {
+    const pc = 0x30f4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x25ef8648 >>> 0);
+    stepOne();
+  });
+  it('[100720] PC 0x000030f8 instr 0x000e7080', () => {
+    const pc = 0x30f8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xe7080 >>> 0);
+    stepOne();
+  });
+  it('[100721] PC 0x000030fc instr 0x01cf1021', () => {
+    const pc = 0x30fc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1cf1021 >>> 0);
+    stepOne();
+  });
+  it('[100722] PC 0x00003100 instr 0x03e00008', () => {
+    const pc = 0x3100;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x3e00008 >>> 0);
+    stepOne();
+  });
+  it('[100723] PC 0x00003104 instr 0x00000000', () => {
+    const pc = 0x3104;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100724] PC 0x00002ca8 instr 0x10400005', () => {
+    const pc = 0x2ca8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x10400005 >>> 0);
+    stepOne();
+  });
+  it('[100725] PC 0x00002cac instr 0x00402021', () => {
+    const pc = 0x2cac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x402021 >>> 0);
+    stepOne();
+  });
+  it('[100726] PC 0x00002cb0 instr 0x8c4e0000', () => {
+    const pc = 0x2cb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8c4e0000 >>> 0);
+    stepOne();
+  });
+  it('[100727] PC 0x00002cb4 instr 0x00000000', () => {
+    const pc = 0x2cb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100728] PC 0x00002cb8 instr 0x15c00006', () => {
+    const pc = 0x2cb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x15c00006 >>> 0);
+    stepOne();
+  });
+  it('[100729] PC 0x00002cbc instr 0x00000000', () => {
+    const pc = 0x2cbc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100730] PC 0x00002cd4 instr 0x0c000fa0', () => {
+    const pc = 0x2cd4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xc000fa0 >>> 0);
+    stepOne();
+  });
+  it('[100731] PC 0x00002cd8 instr 0xafa40024', () => {
+    const pc = 0x2cd8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafa40024 >>> 0);
+    stepOne();
+  });
+  it('[100732] PC 0x00003e80 instr 0x27bdffd8', () => {
+    const pc = 0x3e80;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x27bdffd8 >>> 0);
+    stepOne();
+  });
+  it('[100733] PC 0x00003e84 instr 0xafb20020', () => {
+    const pc = 0x3e84;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafb20020 >>> 0);
+    stepOne();
+  });
+  it('[100734] PC 0x00003e88 instr 0x3c120001', () => {
+    const pc = 0x3e88;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x3c120001 >>> 0);
+    stepOne();
+  });
+  it('[100735] PC 0x00003e8c instr 0xafb1001c', () => {
+    const pc = 0x3e8c;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafb1001c >>> 0);
+    stepOne();
+  });
+  it('[100736] PC 0x00003e90 instr 0x26528648', () => {
+    const pc = 0x3e90;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x26528648 >>> 0);
+    stepOne();
+  });
+  it('[100737] PC 0x00003e94 instr 0xafb00018', () => {
+    const pc = 0x3e94;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafb00018 >>> 0);
+    stepOne();
+  });
+  it('[100738] PC 0x00003e98 instr 0x3c110001', () => {
+    const pc = 0x3e98;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x3c110001 >>> 0);
+    stepOne();
+  });
+  it('[100739] PC 0x00003e9c instr 0xafbf0024', () => {
+    const pc = 0x3e9c;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0xafbf0024 >>> 0);
+    stepOne();
+  });
+  it('[100740] PC 0x00003ea0 instr 0x26318908', () => {
+    const pc = 0x3ea0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x26318908 >>> 0);
+    stepOne();
+  });
+  it('[100741] PC 0x00003ea4 instr 0x02408021', () => {
+    const pc = 0x3ea4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2408021 >>> 0);
+    stepOne();
+  });
+  it('[100742] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100743] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100744] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100745] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100746] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100747] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100748] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100749] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100750] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100751] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100752] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100753] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100754] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100755] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100756] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100757] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100758] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100759] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100760] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100761] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100762] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100763] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100764] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100765] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100766] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100767] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100768] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100769] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100770] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100771] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100772] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100773] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100774] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100775] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100776] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100777] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100778] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100779] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100780] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100781] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100782] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100783] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100784] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100785] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100786] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100787] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100788] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100789] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100790] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100791] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100792] PC 0x00003edc instr 0x2610002c', () => {
+    const pc = 0x3edc;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x2610002c >>> 0);
+    stepOne();
+  });
+  it('[100793] PC 0x00003ee0 instr 0x0211082b', () => {
+    const pc = 0x3ee0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x211082b >>> 0);
+    stepOne();
+  });
+  it('[100794] PC 0x00003ee4 instr 0x1420fff0', () => {
+    const pc = 0x3ee4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x1420fff0 >>> 0);
+    stepOne();
+  });
+  it('[100795] PC 0x00003ee8 instr 0x00000000', () => {
+    const pc = 0x3ee8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100796] PC 0x00003ea8 instr 0x8e0e0000', () => {
+    const pc = 0x3ea8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x8e0e0000 >>> 0);
+    stepOne();
+  });
+  it('[100797] PC 0x00003eac instr 0x00000000', () => {
+    const pc = 0x3eac;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+  it('[100798] PC 0x00003eb0 instr 0x31cf1000', () => {
+    const pc = 0x3eb0;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x31cf1000 >>> 0);
+    stepOne();
+  });
+  it('[100799] PC 0x00003eb4 instr 0x11e00009', () => {
+    const pc = 0x3eb4;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x11e00009 >>> 0);
+    stepOne();
+  });
+  it('[100800] PC 0x00003eb8 instr 0x00000000', () => {
+    const pc = 0x3eb8;
+    expect(getPC()).toBe(pc >>> 0);
+    expect(readU32(pc) >>> 0).toBe(0x0 >>> 0);
+    stepOne();
+  });
+});

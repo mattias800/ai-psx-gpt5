@@ -34,12 +34,13 @@ export interface CDROMDMA {
 
 export class DMAC {
   private channels: { madr: number; bcr: number; chcr: number }[] = Array.from({ length: 7 }, () => ({ madr: 0, bcr: 0, chcr: 0 }));
-  private dpcr = 0xffffffff >>> 0; // default all enabled (for simplicity)
-  private dicr = 0 >>> 0; // IRQ control (shadow)
+  private dpcr = 0x07654321 >>> 0; // default: realistic PSX power-on value
+  private dicr = 0x00000000 >>> 0; // IRQ control (shadow)
   private activeCh: number = -1;
   private pending: Array<{ ch: number; words: number; work: () => void }> = [];
   private spu?: SPUDMA;
   private cdrom?: CDROMDMA;
+  private mdec?: { dmaIn(words: Uint32Array): void; dmaOut(countWords: number): Uint32Array };
 
   constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController, private sch?: EventScheduler, private cyclesPerWord: number = 0) {}
 
@@ -48,6 +49,9 @@ export class DMAC {
   }
   attachCDROM(cd: CDROMDMA) {
     this.cdrom = cd;
+  }
+  attachMDEC(m: { dmaIn(words: Uint32Array): void; dmaOut(countWords: number): Uint32Array }) {
+    this.mdec = m;
   }
 
   // Configure asynchronous timing; when set, supported DMA transfers will be scheduled
@@ -152,6 +156,48 @@ export class DMAC {
     };
 
     switch (ch) {
+      case 0: { // MDEC in (mem -> MDEC)
+        if (!this.mdec) break;
+        if (dirFromMem) {
+          if (sync === 0) {
+            const words = c.bcr & 0xffff;
+            const doWork = () => this.mdecIn(c, words, stepDec);
+            if (tryStartAsync(words, doWork)) return;
+            doWithBusy(doWork); performed = true;
+          } else if (sync === 1) {
+            const blkSize = c.bcr & 0xffff;
+            const blkCount = (c.bcr >>> 16) & 0xffff;
+            const words = blkSize * blkCount;
+            const doWork = () => this.mdecIn(c, words, stepDec);
+            if (blkSize>0 && blkCount>0) {
+              if (tryStartAsync(words, doWork)) return;
+              doWithBusy(doWork); performed = true;
+            }
+          }
+        }
+        break;
+      }
+      case 1: { // MDEC out (MDEC -> mem)
+        if (!this.mdec) break;
+        if (!dirFromMem) {
+          if (sync === 0) {
+            const words = c.bcr & 0xffff;
+            const doWork = () => this.mdecOut(c, words, stepDec);
+            if (tryStartAsync(words, doWork)) return;
+            doWithBusy(doWork); performed = true;
+          } else if (sync === 1) {
+            const blkSize = c.bcr & 0xffff;
+            const blkCount = (c.bcr >>> 16) & 0xffff;
+            const words = blkSize * blkCount;
+            const doWork = () => this.mdecOut(c, words, stepDec);
+            if (blkSize>0 && blkCount>0) {
+              if (tryStartAsync(words, doWork)) return;
+              doWithBusy(doWork); performed = true;
+            }
+          }
+        }
+        break;
+      }
       case 2: { // GPU
         const dmaDir = (this.gpu.readGP1() >>> 29) & 0x3; // 1=FIFO write (CPU->GP0), 2=FIFO read (GPUREAD)
         const canWrite = dmaDir === 1;
@@ -299,6 +345,36 @@ export class DMAC {
     const windows = Math.ceil(words / windowWords);
     const cpuPause = windowWords * this.cyclesPerWord;
     return base + (windows - 1) * cpuPause;
+  }
+
+  private mdecIn(c: { madr: number; bcr: number; chcr: number }, words: number, stepDec: boolean) {
+    if (!this.mdec) return;
+    let addr = c.madr >>> 0;
+    const u32 = new Uint32Array(words);
+    for (let i = 0; i < words; i++) {
+      u32[i] = this.bus.read32(addr) >>> 0;
+      addr = (addr + (stepDec ? -4 : 4)) >>> 0;
+    }
+    this.mdec.dmaIn(u32);
+    c.madr = addr >>> 0;
+  }
+
+  private mdecOut(c: { madr: number; bcr: number; chcr: number }, words: number, stepDec: boolean) {
+    if (!this.mdec) return;
+    const u32 = this.mdec.dmaOut(words);
+    // Dev override: allow streaming directly to GP0 for quick visibility
+    const devToGPU = (typeof process !== 'undefined' && process.env && (process.env.PSX_MDEC_OUT_TO_GPU === '1' || (process.env.PSX_MDEC_OUT_TO_GPU ?? '').toLowerCase() === 'true'));
+    if (devToGPU) {
+      for (let i = 0; i < u32.length; i++) this.gpu.writeGP0(u32[i] >>> 0);
+      return;
+    }
+    // Default: write decoded words to memory at MADR, honoring stepDec
+    let addr = c.madr >>> 0;
+    for (let i = 0; i < u32.length; i++) {
+      this.bus.write32(addr, u32[i] >>> 0);
+      addr = (addr + (stepDec ? -4 : 4)) >>> 0;
+    }
+    c.madr = addr >>> 0;
   }
 
   private gpuBlock(c: { madr: number; bcr: number; chcr: number }, stepDec: boolean) {

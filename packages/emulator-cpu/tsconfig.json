@@ -6,8 +6,7 @@
     "outDir": "dist"
   },
   "references": [
-    { "path": "../emulator-shared" },
-    { "path": "../emulator-core" }
+    { "path": "../emulator-shared" }
   ],
   "include": ["src"]
 }

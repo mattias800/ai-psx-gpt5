@@ -1,6 +1,6 @@
 import { EventScheduler, InterruptController, IRQ } from './timing';
-import type { SPU } from '../../emulator-spu/src/spu';
-import { decodeBlock } from '../../emulator-spu/src/adpcm';
+import type { SPU } from '@ai-psx/spu';
+import { decodeBlock } from '@ai-psx/spu';
 
 const CD_BASE = 0x1f801800;
 
@@ -529,8 +529,118 @@ export class CDROM {
       return;
     }
 
-    // Unsupported
-    this.resp.push(0x00); this.irqLatch |= (1<<3); this.raise();
+    // INIT command (0x0a) - reinitialize CD-ROM
+    if (cmd === 0x0a) {
+      // Reset state but keep disc
+      this.curLBA = 0;
+      this.targetLBA = 0;
+      this.reading = false;
+      this.mode = 0x00;
+      this.resp.push(this.computeStatus() & 0xff); 
+      this.irqLatch |= (1<<3); // INT3
+      this.raise();
+      return;
+    }
+    
+    // TEST command (0x1d) - various test functions
+    if (cmd === 0x1d) {
+      const subFunc = this.param.length > 0 ? this.param.shift()! : 0;
+      
+      if (subFunc === 0x20) {
+        // Get CDROM BIOS version date/version
+        this.resp.push(0x94); // Year (BCD) - 1994
+        this.resp.push(0x09); // Month (BCD) - September  
+        this.resp.push(0x19); // Day (BCD) - 19th
+        this.resp.push(0xc0); // Version
+      } else if (subFunc === 0x00) {
+        // Get status
+        this.resp.push(this.computeStatus() & 0xff);
+      } else {
+        // Other test functions - just return success
+        this.resp.push(this.computeStatus() & 0xff);
+      }
+      
+      this.irqLatch |= (1<<3); // INT3
+      this.raise();
+      return;
+    }
+    
+    // RESET command (0x1c) - reset CD-ROM
+    if (cmd === 0x1c) {
+      // Full reset
+      this.curLBA = 0;
+      this.targetLBA = 0;
+      this.reading = false;
+      this.mode = 0x00;
+      this.readFmt = 'user2048';
+      this.filterFile = 0;
+      this.filterChannel = 0;
+      this.xaMuted = false;
+      this.param = [];
+      this.data = [];
+      this.resp.push(this.computeStatus() & 0xff);
+      this.irqLatch |= (1<<3); // INT3
+      this.raise();
+      return;
+    }
+    
+    // GETTN command (0x13) - get number of tracks
+    if (cmd === 0x13) {
+      this.resp.push(this.computeStatus() & 0xff);
+      
+      if (this.toc && this.toc.tracks.length > 0) {
+        // Return first and last track numbers in BCD
+        const firstTrack = 0x01; // Track 1
+        const lastTrack = Math.min(99, this.toc.tracks.length);
+        this.resp.push(firstTrack);
+        this.resp.push(this.toBCD(lastTrack));
+      } else {
+        // Default: 1 track
+        this.resp.push(0x01); // First track
+        this.resp.push(0x01); // Last track
+      }
+      
+      this.irqLatch |= (1<<3); // INT3
+      this.raise();
+      return;
+    }
+    
+    // GETTD command (0x14) - get track start position
+    if (cmd === 0x14) {
+      const trackBCD = this.param.length > 0 ? this.param.shift()! : 0;
+      const track = this.fromBCD(trackBCD);
+      
+      this.resp.push(this.computeStatus() & 0xff);
+      
+      if (track === 0) {
+        // Track 0 = lead-out position
+        // Return end of disc (approximate)
+        const totalSectors = 74 * 60 * 75; // 74 minute disc
+        const msf = this.lbaToMSF(totalSectors);
+        this.resp.push(this.toBCD(msf.m));
+        this.resp.push(this.toBCD(msf.s));
+      } else if (this.toc && track <= this.toc.tracks.length) {
+        // Return track start position
+        const t = this.toc.tracks[track - 1];
+        const msf = this.lbaToMSF(t.startLBA);
+        this.resp.push(this.toBCD(msf.m));
+        this.resp.push(this.toBCD(msf.s));
+      } else {
+        // Default: track starts at 00:02 (after 2-second pregap)
+        this.resp.push(0x00); // MM
+        this.resp.push(0x02); // SS
+      }
+      
+      this.irqLatch |= (1<<3); // INT3
+      this.raise();
+      return;
+    }
+    
+    // Unsupported - return error
+    this.resp.push(this.computeStatus() & 0xff | 0x01); // Set error bit
+    this.irqLatch |= (1<<5); // INT5 error
+    this.error = 1;
+    this.raise();
   }
 
   private computeStatus(): number {
@@ -569,6 +679,16 @@ export class CDROM {
     return { m, s, f };
   }
 
+  private toBCD(n: number): number {
+    const tens = Math.floor(n / 10) % 10;
+    const ones = n % 10;
+    return (tens << 4) | ones;
+  }
+  
+  private fromBCD(bcd: number): number {
+    return ((bcd >> 4) & 0x0f) * 10 + (bcd & 0x0f);
+  }
+  
   private getQTrackIndexControl(lba: number): { track: number; index: number; control: number } {
     const def = { track: 1, index: 1, control: 0x04 };
     if (!(this.toc && Array.isArray(this.toc.tracks) && this.toc.tracks.length > 0)) return def;

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSX BIOS Browser Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: monospace;
+            background: #222;
+            color: #0f0;
+        }
+        #canvas {
+            border: 2px solid #0f0;
+            image-rendering: pixelated;
+            width: 640px;
+            height: 480px;
+        }
+        #status {
+            margin-top: 10px;
+        }
+        #controls {
+            margin-top: 10px;
+        }
+        button {
+            background: #333;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #444;
+        }
+    </style>
+</head>
+<body>
+    <h1>PSX BIOS Browser Test</h1>
+    <canvas id="canvas" width="1024" height="512"></canvas>
+    <div id="status">Status: Initializing...</div>
+    <div id="controls">
+        <button id="start">Start</button>
+        <button id="stop">Stop</button>
+        <button id="step">Step Frame</button>
+        <button id="reset">Reset</button>
+    </div>
+    <div id="info">
+        <p>FPS: <span id="fps">0</span></p>
+        <p>Frames: <span id="frames">0</span></p>
+        <p>CPU PC: <span id="pc">0x00000000</span></p>
+    </div>
+    <script type="module">
+        // Import the emulator modules
+        import { PSXSystem } from '../packages/emulator-core/dist/psx.js';
+        import { GPU } from '../packages/emulator-gpu/dist/gpu.js';
+        
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const fpsEl = document.getElementById('fps');
+        const framesEl = document.getElementById('frames');
+        const pcEl = document.getElementById('pc');
+        
+        let psx = null;
+        let running = false;
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let lastFpsUpdate = performance.now();
+        let fpsFrames = 0;
+        
+        async function loadBIOS() {
+            const biosNames = ['scph1001.bin', 'SCPH1001.BIN', 'pc1001.bin', 'PC1001.BIN'];
+            
+            for (const name of biosNames) {
+                try {
+                    const response = await fetch(`/${name}`);
+                    if (response.ok) {
+                        const buffer = await response.arrayBuffer();
+                        return new Uint8Array(buffer);
+                    }
+                } catch (e) {
+                    console.log(`Failed to load ${name}:`, e);
+                }
+            }
+            
+            throw new Error('No BIOS file found. Please place a BIOS file in the root directory.');
+        }
+        
+        function vramToCanvas(vram) {
+            const imageData = ctx.createImageData(1024, 512);
+            const data = imageData.data;
+            
+            for (let i = 0; i < vram.length; i++) {
+                const pixel = vram[i];
+                const r = ((pixel >> 10) & 0x1f) << 3;
+                const g = ((pixel >> 5) & 0x1f) << 3;
+                const b = (pixel & 0x1f) << 3;
+                
+                const offset = i * 4;
+                data[offset] = r;
+                data[offset + 1] = g;
+                data[offset + 2] = b;
+                data[offset + 3] = 255;
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+        
+        function updateInfo() {
+            if (psx) {
+                pcEl.textContent = '0x' + psx.cpu.getPC().toString(16).padStart(8, '0');
+                framesEl.textContent = frameCount;
+            }
+        }
+        
+        function runFrame() {
+            if (!running || !psx) return;
+            
+            const CYCLES_PER_FRAME = 33868800 / 60; // NTSC 60fps
+            
+            // Run CPU for one frame's worth of cycles
+            for (let i = 0; i < CYCLES_PER_FRAME; i += 100) {
+                for (let j = 0; j < 100; j++) {
+                    psx.cpu.step();
+                }
+                
+                // Process scheduled events
+                psx.scheduler.tick(100);
+            }
+            
+            // Update display
+            vramToCanvas(psx.gpu.vram);
+            frameCount++;
+            fpsFrames++;
+            
+            // Update FPS
+            const now = performance.now();
+            if (now - lastFpsUpdate > 1000) {
+                const fps = (fpsFrames * 1000) / (now - lastFpsUpdate);
+                fpsEl.textContent = fps.toFixed(1);
+                fpsFrames = 0;
+                lastFpsUpdate = now;
+            }
+            
+            updateInfo();
+            
+            // Schedule next frame
+            requestAnimationFrame(runFrame);
+        }
+        
+        async function init() {
+            try {
+                statusEl.textContent = 'Status: Loading BIOS...';
+                const bios = await loadBIOS();
+                
+                statusEl.textContent = 'Status: Initializing PSX...';
+                psx = new PSXSystem();
+                psx.loadBIOS(bios);
+                
+                // Reset CPU to BIOS entry point
+                psx.cpu.reset();
+                psx.cpu.setPC(0xbfc00000);
+                
+                statusEl.textContent = 'Status: Ready. Click Start to begin.';
+                
+                // Initial render
+                vramToCanvas(psx.gpu.vram);
+                updateInfo();
+                
+            } catch (e) {
+                statusEl.textContent = 'Status: Error - ' + e.message;
+                console.error(e);
+            }
+        }
+        
+        document.getElementById('start').onclick = () => {
+            if (!running && psx) {
+                running = true;
+                statusEl.textContent = 'Status: Running...';
+                runFrame();
+            }
+        };
+        
+        document.getElementById('stop').onclick = () => {
+            running = false;
+            statusEl.textContent = 'Status: Stopped';
+        };
+        
+        document.getElementById('step').onclick = () => {
+            if (psx && !running) {
+                const CYCLES_PER_FRAME = 33868800 / 60;
+                for (let i = 0; i < CYCLES_PER_FRAME; i++) {
+                    psx.cpu.step();
+                }
+                psx.scheduler.tick(CYCLES_PER_FRAME);
+                vramToCanvas(psx.gpu.vram);
+                frameCount++;
+                updateInfo();
+            }
+        };
+        
+        document.getElementById('reset').onclick = () => {
+            running = false;
+            if (psx) {
+                psx.cpu.reset();
+                psx.cpu.setPC(0xbfc00000);
+                frameCount = 0;
+                fpsFrames = 0;
+                vramToCanvas(psx.gpu.vram);
+                updateInfo();
+                statusEl.textContent = 'Status: Reset. Click Start to begin.';
+            }
+        };
+        
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>

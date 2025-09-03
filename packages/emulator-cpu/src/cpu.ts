@@ -52,17 +52,6 @@ export class R3000A {
   }
 
   step(): void {
-    // Handle pending interrupt before fetching next instruction
-    if (this.intPending && this.intPending()) {
-      const sr = this.cop0[12] >>> 0;
-      const IEc = sr & 1;
-      if (IEc) {
-        this.enterException(0x80000080, 0 /*Int*/);
-        this.s.cycles += 1; // cost for exception entry
-        return;
-      }
-    }
-
     const pc = this.s.pc >>> 0;
     const instr = this.mem.read32(pc) >>> 0;
     if (this.tracer) this.tracer(pc >>> 0, instr >>> 0, this.s);
@@ -157,7 +146,9 @@ export class R3000A {
             this.s.nextPc = r[rs] >>> 0; // delay slot already scheduled
             break;
           case 0x09: // JALR
-            writeReg(rd, this.s.pc);
+            // Return address is instruction after the delay slot: P + 8.
+            // At this point s.pc == P + 4 (we advanced earlier), so store pc+4.
+            writeReg(rd, (this.s.pc + 4) >>> 0);
             this.s.nextPc = r[rs] >>> 0;
             break;
           case 0x20: // ADD
@@ -292,7 +283,9 @@ export class R3000A {
         break;
       }
       case 0x03: // JAL
-        writeReg(31, this.s.pc);
+        // Return address is instruction after the delay slot: P + 8.
+        // At this point s.pc == P + 4 (we advanced earlier), so store pc+4.
+        writeReg(31, (this.s.pc + 4) >>> 0);
         this.s.nextPc = target >>> 0;
         break;
       case 0x04: // BEQ
@@ -396,6 +389,20 @@ export class R3000A {
       default:
         // unimplemented
         break;
+    }
+    // After executing the instruction (including any delay slot), handle pending interrupts.
+    if (this.intPending && this.intPending()) {
+      const sr = this.cop0[12] >>> 0;
+      const IEc = sr & 1;
+      if (IEc) {
+        // Respect BEV (SR bit 22): when set, use boot vectors in KSEG1 (0xBFC00180), otherwise KSEG0 (0x80000080)
+        const bev = (sr >>> 22) & 1;
+        const vec = bev ? 0xbfc00180 : 0x80000080;
+        this.enterException(vec >>> 0, 0 /*Int*/);
+        this.s.cycles += 1; // cost for exception entry
+        this.s.regs[0] = 0; // enforce r0
+        return;
+      }
     }
     this.s.regs[0] = 0; // enforce r0
     this.s.cycles += 1; // placeholder timing

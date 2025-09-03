@@ -1,0 +1,1 @@
+Generated tests from pcsx-redux-bios.log. Do not edit.

@@ -6,8 +6,10 @@
     "outDir": "dist"
   },
   "references": [
-    { "path": "../emulator-shared" }
+    { "path": "../emulator-shared" },
+    { "path": "../emulator-cpu" },
+    { "path": "../emulator-gpu" },
+    { "path": "../emulator-spu" }
   ],
   "include": ["src"]
 }
-

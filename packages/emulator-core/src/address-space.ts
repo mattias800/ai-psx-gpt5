@@ -87,9 +87,23 @@ export interface IODevices {
   spu?: { read16(addr: number): number; write16(addr: number, v: number): void };
   sio?: { read8(addr: number): number; write8(addr: number, v: number): void };
   cdrom?: { read8(addr: number): number; write8(addr: number, v: number): void };
+  mdec?: { read32(addr: number): number; write32(addr: number, v: number): void };
 }
 
 export class IOHub implements MemoryRegion {
+  // Latches for PSX memory control/BIU registers. BIOS probes these; reads should return last written values.
+  private memctrl = new Map<number, number>([
+    [0x1f801000, 0x1f000000], // EXP1 Base Address
+    [0x1f801004, 0x1f802000], // EXP2 Base Address
+    [0x1f801008, 0x0013243f], // EXP1 Delay/Size
+    [0x1f80100c, 0x00003022], // EXP3 Delay/Size
+    [0x1f801010, 0x0013243f], // BIOS ROM Delay/Size
+    [0x1f801014, 0x200931e1], // SPU Delay/Size
+    [0x1f801018, 0x00020843], // CDROM Delay/Size
+    [0x1f80101c, 0x00070777], // EXP2 Delay/Size
+    [0x1f801020, 0x00031125], // COM Delay/Size
+    [0x1f801060, 0x00000b88], // RAM Size/Control
+  ]);
   constructor(private devs: IODevices) {}
   contains(addr: number): boolean {
     const p = toPhysical(addr);
@@ -97,6 +111,8 @@ export class IOHub implements MemoryRegion {
   }
   read8(addr: number): number {
     const p = toPhysical(addr);
+    // EXP2 open bus default: 0x1f802000..0x1f802fff -> 0xff
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return 0xff;
     // SIO0 byte range: 0x1f801040..0x1f80105f
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
       return (this.devs.sio?.read8(p) ?? 0) & 0xff;
@@ -110,21 +126,23 @@ export class IOHub implements MemoryRegion {
   }
   read16(addr: number): number {
     const p = toPhysical(addr);
+    // EXP2 open bus default
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return 0xffff;
     // SPU: direct 16-bit access to avoid data port side effects from 32-bit aggregation
     if (p >= 0x1f801c00 && p <= 0x1f801dff) {
       return (this.devs.spu?.read16(p) ?? 0) & 0xffff;
     }
     // SIO: read two bytes via byte interface
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
-      const lo = this.devs.sio?.read8(p) ?? 0;
-      const hi = this.devs.sio?.read8((p + 1) >>> 0) ?? 0;
-      return ((lo & 0xff) | ((hi & 0xff) << 8)) & 0xffff;
+      const lo = (this.devs.sio?.read8(p) ?? 0) & 0xff;
+      const hi = (this.devs.sio?.read8((p + 1) >>> 0) ?? 0) & 0xff;
+      return ((lo) | (hi << 8)) & 0xffff;
     }
     // CDROM: two bytes
     if (p >= 0x1f801800 && p <= 0x1f801803) {
-      const lo = this.devs.cdrom?.read8(p) ?? 0;
-      const hi = this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0;
-      return ((lo & 0xff) | ((hi & 0xff) << 8)) & 0xffff;
+      const lo = (this.devs.cdrom?.read8(p) ?? 0) & 0xff;
+      const hi = (this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0) & 0xff;
+      return ((lo) | (hi << 8)) & 0xffff;
     }
     const base = addr & ~3;
     const v = this.read32(base);
@@ -133,21 +151,31 @@ export class IOHub implements MemoryRegion {
   read32(addr: number): number {
     const p = toPhysical(addr);
     const t = this.devs.timers;
+    // EXP2 open bus default: return 0xffffffff
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return 0xffffffff >>> 0;
+    // MDEC registers 0x1f801820..0x1f801827 (word-aligned)
+    if (p >= 0x1f801820 && p <= 0x1f801827 && (p & 3) === 0) {
+      return (this.devs.mdec?.read32(p) ?? 0) >>> 0;
+    }
     // SIO region handled by byte reads/aggregation
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
-      const b0 = this.devs.sio?.read8(p) ?? 0;
-      const b1 = this.devs.sio?.read8((p + 1) >>> 0) ?? 0;
-      const b2 = this.devs.sio?.read8((p + 2) >>> 0) ?? 0;
-      const b3 = this.devs.sio?.read8((p + 3) >>> 0) ?? 0;
+      const b0 = (this.devs.sio?.read8(p) ?? 0) & 0xff;
+      const b1 = (this.devs.sio?.read8((p + 1) >>> 0) ?? 0) & 0xff;
+      const b2 = (this.devs.sio?.read8((p + 2) >>> 0) ?? 0) & 0xff;
+      const b3 = (this.devs.sio?.read8((p + 3) >>> 0) ?? 0) & 0xff;
       return (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) >>> 0;
     }
     // CDROM region handled by byte aggregation
     if (p >= 0x1f801800 && p <= 0x1f801803) {
-      const b0 = this.devs.cdrom?.read8(p) ?? 0;
-      const b1 = this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0;
-      const b2 = this.devs.cdrom?.read8((p + 2) >>> 0) ?? 0;
-      const b3 = this.devs.cdrom?.read8((p + 3) >>> 0) ?? 0;
+      const b0 = (this.devs.cdrom?.read8(p) ?? 0) & 0xff;
+      const b1 = (this.devs.cdrom?.read8((p + 1) >>> 0) ?? 0) & 0xff;
+      const b2 = (this.devs.cdrom?.read8((p + 2) >>> 0) ?? 0) & 0xff;
+      const b3 = (this.devs.cdrom?.read8((p + 3) >>> 0) ?? 0) & 0xff;
       return (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) >>> 0;
+    }
+    // Memory control latches
+    if (this.memctrl.has(p)) {
+      return (this.memctrl.get(p)!) >>> 0;
     }
     switch (p) {
       // INTC
@@ -186,15 +214,22 @@ export class IOHub implements MemoryRegion {
         }
         // SPU registers: 0x1f801c00..0x1f801dff (16-bit regs)
         if (p >= 0x1f801c00 && p <= 0x1f801dff) {
-          const lo = this.devs.spu?.read16(p) ?? 0;
-          const hi = this.devs.spu?.read16((p + 2) >>> 0) ?? 0;
-          return ((lo & 0xffff) | ((hi & 0xffff) << 16)) >>> 0;
+          const lo = (this.devs.spu?.read16(p) ?? 0) & 0xffff;
+          const hi = (this.devs.spu?.read16((p + 2) >>> 0) ?? 0) & 0xffff;
+          return ((lo) | (hi << 16)) >>> 0;
         }
         return 0;
     }
   }
   write8(addr: number, v: number): void {
     const p = toPhysical(addr);
+    // EXP2 open bus: ignore writes
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return;
+    // MDEC registers
+    if (p >= 0x1f801820 && p <= 0x1f801827 && (p & 3) === 0) {
+      this.devs.mdec?.write32(p, v >>> 0);
+      return;
+    }
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
       this.devs.sio?.write8(p, v & 0xff);
       return;
@@ -210,6 +245,8 @@ export class IOHub implements MemoryRegion {
   }
   write16(addr: number, v: number): void {
     const p = toPhysical(addr);
+    // EXP2 open bus: ignore writes
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return;
     // SPU: direct 16-bit access
     if (p >= 0x1f801c00 && p <= 0x1f801dff) {
       this.devs.spu?.write16(p, v & 0xffff);
@@ -236,6 +273,13 @@ export class IOHub implements MemoryRegion {
   write32(addr: number, v: number): void {
     const p = toPhysical(addr);
     const t = this.devs.timers;
+    // EXP2 open bus: ignore writes
+    if (p >= 0x1f802000 && p <= 0x1f802fff) return;
+    // MDEC registers
+    if (p >= 0x1f801820 && p <= 0x1f801827 && (p & 3) === 0) {
+      this.devs.mdec?.write32(p, v >>> 0);
+      return;
+    }
     // SIO: split into four byte writes
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
       this.devs.sio?.write8(p, v & 0xff);
@@ -250,6 +294,11 @@ export class IOHub implements MemoryRegion {
       this.devs.cdrom?.write8((p + 1) >>> 0, (v >>> 8) & 0xff);
       this.devs.cdrom?.write8((p + 2) >>> 0, (v >>> 16) & 0xff);
       this.devs.cdrom?.write8((p + 3) >>> 0, (v >>> 24) & 0xff);
+      return;
+    }
+    // Memory control latches
+    if (this.memctrl.has(p)) {
+      this.memctrl.set(p, (v >>> 0));
       return;
     }
     switch (p) {
@@ -311,6 +360,17 @@ export class IOHub implements MemoryRegion {
         break;
     }
   }
+}
+
+class NopRegion implements MemoryRegion {
+  constructor(private containsFn: (addr: number) => boolean) {}
+  contains(addr: number): boolean { return this.containsFn(addr >>> 0); }
+  read8(_addr: number): number { return 0; }
+  read16(_addr: number): number { return 0; }
+  read32(_addr: number): number { return 0; }
+  write8(_addr: number, _val: number): void {}
+  write16(_addr: number, _val: number): void {}
+  write32(_addr: number, _val: number): void {}
 }
 
 export class AddressSpace implements Bus {
