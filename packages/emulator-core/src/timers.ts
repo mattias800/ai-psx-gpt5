@@ -1,4 +1,4 @@
-import { EventScheduler } from './timing';
+import { EventScheduler } from './timing.js';
 
 export class HWTimer {
   // PSX timer model with proper mode bits

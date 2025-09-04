@@ -1,1 +1,1 @@
-export { GPU } from './gpu';
+export { GPU } from './gpu.js';

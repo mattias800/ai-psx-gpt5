@@ -1,4 +1,4 @@
-import { EventScheduler, InterruptController, IRQ } from './timing';
+import { EventScheduler, InterruptController, IRQ } from './timing.js';
 
 export interface DisplayConfig {
   cyclesPerLine: number;

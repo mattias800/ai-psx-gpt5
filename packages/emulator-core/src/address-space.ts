@@ -1,5 +1,5 @@
-import { toPhysical, BIOSRegion, type BIOSProvider } from './memmap';
-import type { MemoryRegion, Bus } from './bus';
+import { toPhysical, BIOSRegion, type BIOSProvider } from './memmap.js';
+import type { MemoryRegion, Bus } from './bus.js';
 
 export class MappedRAM implements MemoryRegion {
   private data: Uint8Array;

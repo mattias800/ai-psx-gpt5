@@ -30,7 +30,7 @@ psx.enableMemTrace({ output: (s) => memLines.push(s) });
 (psx).cpu.s.pc = 0xbfc00000 >>> 0;
 (psx).cpu.s.nextPc = 0xbfc00004 >>> 0;
 
-for (let i = 0; i < count; i++) (psx as any).cpu.step();
+for (let i = 0; i < count; i++) psx.cpu.step();
 
 writeFileSync('bios.trace', instrLines.join('\n'));
 writeFileSync('bios-mem.trace', memLines.join('\n'));

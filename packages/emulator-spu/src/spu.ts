@@ -1,5 +1,5 @@
-import { decodeBlock } from './adpcm';
-import { AR_SAMPLES, DR_SAMPLES, RR_SAMPLES, SR_DRIFT } from './adsr-tables';
+import { decodeBlock } from './adpcm.js';
+import { AR_SAMPLES, DR_SAMPLES, RR_SAMPLES, SR_DRIFT } from './adsr-tables.js';
 const SPU_BASE = 0x1f801c00;
 
 interface Voice {

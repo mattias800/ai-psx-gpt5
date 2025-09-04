@@ -1,4 +1,4 @@
-import { EventScheduler, InterruptController, IRQ } from './timing';
+import { EventScheduler, InterruptController, IRQ } from './timing.js';
 import type { SPU } from '@ai-psx/spu';
 import { decodeBlock } from '@ai-psx/spu';
 
@@ -644,24 +644,32 @@ export class CDROM {
   }
 
   private computeStatus(): number {
-    // Compose status bits (stub mapping):
-    // bit0 (0x01): busy (seek or reading)
-    // bit1 (0x02): ready
-    // bit2 (0x04): parameter FIFO not empty
-    // bit3 (0x08): response FIFO not empty
-    // bit4 (0x10): data FIFO not empty
-    // bit5 (0x20): reading active
-    // bit6 (0x40): error (set when INT5 latched, cleared on INT5 ack)
-    // bit7 (0x80): shell open
-    let st = 0x02;
-    const busy = this.reading || !!this.seekEvt;
-    if (busy) st |= 0x01;
-    if (this.param.length > 0) st |= 0x04;
-    if (this.resp.length > 0) st |= 0x08;
-    if (this.data.length > 0) st |= 0x10;
+    // PSX CD-ROM status byte:
+    // bit0 (0x01): error
+    // bit1 (0x02): motor on
+    // bit2 (0x04): seek error  
+    // bit3 (0x08): ID error (unlicensed disc)
+    // bit4 (0x10): shell open
+    // bit5 (0x20): reading
+    // bit6 (0x40): seeking
+    // bit7 (0x80): playing audio
+    let st = 0x00;
+    
+    // Error flag
+    if (this.error) st |= 0x01;
+    
+    // Motor is on when disc present and shell closed
+    if (this.discPresent && !this.shellOpen) st |= 0x02;
+    
+    // Shell open
+    if (this.shellOpen) st |= 0x10;
+    
+    // Reading flag
     if (this.reading) st |= 0x20;
-    if (this.error) st |= 0x40;
-    if (this.shellOpen) st |= 0x80;
+    
+    // Seeking flag
+    if (this.seekEvt) st |= 0x40;
+    
     return st & 0xff;
   }
 

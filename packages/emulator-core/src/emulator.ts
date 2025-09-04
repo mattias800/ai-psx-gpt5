@@ -1,6 +1,6 @@
-import { AddressSpace, createDefaultPSXAddressSpace } from './address-space';
-import type { BIOSProvider } from './memmap';
-import type { Bus } from './bus';
+import { AddressSpace, createDefaultPSXAddressSpace } from './address-space.js';
+import type { BIOSProvider } from './memmap.js';
+import type { Bus } from './bus.js';
 import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 
 class CPUHostAdapter implements CPUHost {

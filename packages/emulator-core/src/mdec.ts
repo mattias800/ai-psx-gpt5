@@ -1,4 +1,4 @@
-import type { EventScheduler } from './timing';
+import type { EventScheduler } from './timing.js';
 import type { GPU } from '@ai-psx/gpu';
 
 // MDEC (Motion Decoder) implementation with basic RLE decompression for PlayStation logo

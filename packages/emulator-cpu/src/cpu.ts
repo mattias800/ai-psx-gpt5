@@ -27,13 +27,17 @@ export interface CPUHost {
   write8(addr: number, val: number): void;
 }
 
-import { GTE } from './gte';
+import { GTE } from './gte.js';
 
 export class R3000A {
   private cop0 = new Int32Array(32);
   private gte = new GTE();
   private tracer?: (pc: number, instr: number, s: CPUState) => void;
   constructor(public s: CPUState, private mem: CPUHost, private intPending?: () => boolean) {}
+  
+  // Convenience getter for accessing the program counter
+  get pc(): number { return this.s.pc; }
+  set pc(val: number) { this.s.pc = val >>> 0; }
 
   setTracer(tr?: (pc: number, instr: number, s: CPUState) => void) {
     this.tracer = tr;

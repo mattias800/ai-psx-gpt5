@@ -45,7 +45,11 @@ export class GPU {
         case 0xc0: // Image Store (VRAM -> CPU)
           this.parmWordsNeeded = 2; // xy, size
           break;
-        case 0x64: // Rectangle (variable) filled, opaque
+        case 0x60: // Rectangle (variable) filled, opaque
+          this.parmWordsNeeded = 2; // xy, size (color was the command word)
+          this.parms.push(val & 0x00ffffff); // store color as parms[0]
+          break;
+        case 0x64: // Rectangle (variable) filled, opaque (alias)
           this.parmWordsNeeded = 2; // xy, size (color was the command word)
           this.parms.push(val & 0x00ffffff); // store color as parms[0]
           break;
@@ -102,7 +106,7 @@ export class GPU {
           const { w, h } = this.decodeSize(this.parms[1]);
           this.imageStoreQueue = this.readRectToWords(x, y, w, h);
           this.inCmd = 0; // No payload for store; GPUREAD will fetch
-        } else if (this.inCmd === 0x64) {
+        } else if (this.inCmd === 0x60 || this.inCmd === 0x64) {
           const color = this.parms[0] >>> 0; // color from first word's low 24 bits
           const xy = this.parms[1] >>> 0;
           const size = this.parms[2] >>> 0;

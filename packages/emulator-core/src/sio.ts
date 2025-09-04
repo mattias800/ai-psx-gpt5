@@ -1,4 +1,4 @@
-import { InterruptController, IRQ } from './timing';
+import { InterruptController, IRQ } from './timing.js';
 
 // Minimal SIO0 (controller) stub to support basic PAD poll over 0x1f801040..0x1f80105f
 // Scope: byte-addressable DATA/STAT/MODE/CTRL/BAUD with a digital pad response and host-injected state.

@@ -1,2 +1,2 @@
-export { SPU } from './spu';
-export * from './adpcm';
+export { SPU } from './spu.js';
+export * from './adpcm.js';

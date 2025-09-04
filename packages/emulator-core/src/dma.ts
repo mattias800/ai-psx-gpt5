@@ -1,6 +1,6 @@
-import type { Bus } from './bus';
-import type { GPURegs } from './address-space';
-import { EventScheduler, InterruptController, IRQ } from './timing';
+import type { Bus } from './bus.js';
+import type { GPURegs } from './address-space.js';
+import { EventScheduler, InterruptController, IRQ } from './timing.js';
 
 export class DMAController {
   constructor(private bus: Bus, private gpu: GPURegs) {}

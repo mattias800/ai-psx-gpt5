@@ -1,52 +1,57 @@
-import { AddressSpace, IOHub, MappedRAM, type IODevices } from './address-space';
-import { EventScheduler, InterruptController, IRQ } from './timing';
-import { DisplayController } from './display';
+import { AddressSpace, IOHub, MappedRAM, type IODevices } from './address-space.js';
+import { EventScheduler, InterruptController, IRQ } from './timing.js';
+import { DisplayController } from './display.js';
 import { R3000A, createResetState, type CPUHost } from '@ai-psx/cpu';
 import { GPU } from '@ai-psx/gpu';
 import { SPU } from '@ai-psx/spu';
-import { DMAC } from './dma';
+import { DMAC } from './dma.js';
 import { PSX_CLOCK } from '@ai-psx/shared';
-import { HWTimer } from './timers';
-import { SIO } from './sio';
-import { CDROM } from './cdrom';
-import { BIOSRegion, type BIOSProvider, toPhysical } from './memmap';
-import { MDEC } from './mdec';
+import { HWTimer } from './timers.js';
+import { SIO } from './sio.js';
+import { CDROM } from './cdrom.js';
+import { BIOSRegion, type BIOSProvider, toPhysical } from './memmap.js';
+import { MDEC } from './mdec.js';
+import { initializeHardware } from './hardware-init.js';
 
 class CPUHostBus implements CPUHost {
+  private currentPc: number = 0;
+  
   constructor(
     private as: AddressSpace,
-    private memTrace?: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number, val: number) => void,
+    private memTrace?: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number, val: number, pc: number) => void,
     private preRead32?: (addr: number) => void,
   ) {}
-  setMemTrace(t?: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number, val: number) => void) { this.memTrace = t; }
+  setMemTrace(t?: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number, val: number, pc: number) => void) { this.memTrace = t; }
   setPreRead32Hook(h?: (addr: number) => void) { this.preRead32 = h; }
+  setCurrentPc(pc: number) { this.currentPc = pc; }
+  
   read32(a: number): number {
     if (this.preRead32) this.preRead32(a >>> 0);
     const v = this.as.read32(a) >>> 0;
-    if (this.memTrace) this.memTrace('r32', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('r32', a >>> 0, v >>> 0, this.currentPc);
     return v >>> 0;
   }
   read16(a: number): number {
     const v = this.as.read16(a) & 0xffff;
-    if (this.memTrace) this.memTrace('r16', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('r16', a >>> 0, v >>> 0, this.currentPc);
     return v >>> 0;
   }
   read8(a: number): number {
     const v = this.as.read8(a) & 0xff;
-    if (this.memTrace) this.memTrace('r8', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('r8', a >>> 0, v >>> 0, this.currentPc);
     return v >>> 0;
   }
   write32(a: number, v: number): void {
     this.as.write32(a, v >>> 0);
-    if (this.memTrace) this.memTrace('w32', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('w32', a >>> 0, v >>> 0, this.currentPc);
   }
   write16(a: number, v: number): void {
     this.as.write16(a, v >>> 0);
-    if (this.memTrace) this.memTrace('w16', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('w16', a >>> 0, v >>> 0, this.currentPc);
   }
   write8(a: number, v: number): void {
     this.as.write8(a, v >>> 0);
-    if (this.memTrace) this.memTrace('w8', a >>> 0, v >>> 0);
+    if (this.memTrace) this.memTrace('w8', a >>> 0, v >>> 0, this.currentPc);
   }
 }
 
@@ -62,12 +67,12 @@ export class PSXSystem {
   public readonly dmac: DMAC;
   public readonly spu = new SPU();
   public display?: DisplayController;
-  private timer0?: import('./timers').HWTimer;
-  private timer1?: import('./timers').HWTimer;
-  private timer2?: import('./timers').HWTimer;
+  public timer0?: import('./timers').HWTimer;
+  public timer1?: import('./timers').HWTimer;
+  public timer2?: import('./timers').HWTimer;
   private timersPumpId?: number;
-  private sio?: SIO;
-  private cd?: CDROM;
+  public sio?: SIO;
+  public cd?: CDROM;
 
   constructor() {
     // Initialize DMAC before IOHub so we can pass it into devs
@@ -209,12 +214,12 @@ export class PSXSystem {
       }
     })());
     
-    // Physical addresses 0x14000000-0x1fffffff: Extended RAM or expansion
-    // This is where the BIOS was trying to access (0x1440001c)
+    // Physical addresses 0x01400000-0x1effffff: Extended RAM or expansion areas
+    // This includes regions the BIOS might probe during initialization
     this.as.addRegion(new (class {
       contains(addr: number): boolean { 
         const ph = toPhysical(addr >>> 0);
-        return ph >= 0x14000000 && ph <= 0x1effffff; 
+        return ph >= 0x01400000 && ph <= 0x1effffff; 
       }
       read8(_addr: number): number { return 0; }
       read16(_addr: number): number { return 0; }
@@ -236,8 +241,12 @@ export class PSXSystem {
       write32(_addr: number, _v: number): void {}
     })());
 
+    // Note: Catch-all region removed - it was interfering with BIOS loading
+    // The BIOS region is added dynamically in loadBIOS()
+
 const cpuBus = new CPUHostBus(this.as);
-this.cpu = new R3000A(createResetState(0), cpuBus as any, () => this.intc.pending);
+// Start CPU at BIOS reset vector (0xBFC00000)
+this.cpu = new R3000A(createResetState(0xBFC00000), cpuBus as any, () => this.intc.pending);
 // Install a lazy re-seed safety: before any 32-bit read in the BIOS stub region,
 // ensure the A0/B0/C0 stubs and dispatchers are present. This covers BIOS scrubbing loops.
 cpuBus.setPreRead32Hook((addr: number) => {
@@ -296,6 +305,14 @@ cpuBus.setPreRead32Hook((addr: number) => {
     this.as.addRegion(new BIOSRegion(provider));
     // Populate kernel BIOS call trampolines in RAM so jumps to 0xA0/0xB0/0xC0 work immediately.
     this.installBiosCallStubs();
+    // Initialize hardware to expected state to prevent BIOS errors
+    initializeHardware(this);
+    // Install bad jump prevention
+    this.installBadJumpPrevention();
+    // Attach display controller for VBLANK interrupts (essential for BIOS animation)
+    if (!this.display) {
+      this.attachDisplay({ cyclesPerLine: 3413, linesPerFrame: 263 }); // NTSC timings
+    }
   }
 
   // Install BIOS call stubs used by PS1 kernel:
@@ -444,7 +461,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
       0x78: 0xbfc05958,  // _96_CdSeekL
       0x95: 0xbfc05994,  // CdInit
       0x96: 0xbfc059c4,  // CdRemove
-      0x97: 0x00000f2c,  // Unknown function (stub to prevent crash)
+      0x97: 0xbfc0c1fc,  // Unknown function (proper BIOS address)
       0x99: 0xbfc086b0,  // FileOpen
       0x9c: 0xbfc0596c,  // FileSeek
       0x9d: 0xbfc04518,  // FileRead
@@ -625,6 +642,52 @@ cpuBus.setPreRead32Hook((addr: number) => {
     return false;
   }
 
+  // Install prevention for bad jumps to ASCII text addresses
+  private installBadJumpPrevention(): void {
+    // Create a handler region for bad addresses that look like ASCII text
+    this.as.addRegion(new (class {
+      contains(addr: number): boolean { 
+        const ph = toPhysical(addr >>> 0);
+        // Catch jumps to ASCII text addresses (0x20-0x7E range bytes)
+        // Common bad addresses: 0x64657472 ("detr"), 0x65722064 ("er d"), etc.
+        if (ph >= 0x20000000 && ph <= 0x7F000000) {
+          const bytes = [
+            (ph >>> 24) & 0xFF,
+            (ph >>> 16) & 0xFF,
+            (ph >>> 8) & 0xFF,
+            ph & 0xFF
+          ];
+          // Check if all bytes are printable ASCII
+          return bytes.every(b => b >= 0x20 && b <= 0x7E);
+        }
+        return false;
+      }
+      read8(_addr: number): number { 
+        console.warn('[Bad Jump Prevention] Prevented read from ASCII text address');
+        return 0; 
+      }
+      read16(_addr: number): number { 
+        console.warn('[Bad Jump Prevention] Prevented read from ASCII text address');
+        return 0; 
+      }
+      read32(_addr: number): number { 
+        console.warn('[Bad Jump Prevention] Prevented fetch from ASCII text address');
+        // Return a jr ra; nop sequence to safely return
+        return 0x03e00008; // jr ra
+      }
+      write8(_addr: number, _v: number): void {
+        console.warn('[Bad Jump Prevention] Prevented write to ASCII text address');
+      }
+      write16(_addr: number, _v: number): void {
+        console.warn('[Bad Jump Prevention] Prevented write to ASCII text address');
+      }
+      write32(_addr: number, _v: number): void {
+        console.warn('[Bad Jump Prevention] Prevented write to ASCII text address');
+      }
+    })());
+    console.log('[Bad Jump Prevention] Installed ASCII text address handler');
+  }
+
   // Ensure BIOS stubs exist; if any sentinel word is missing, reinstall all stubs.
   private ensureBiosCallStubsPresent(): void {
     const r = this.ram;
@@ -680,25 +743,135 @@ cpuBus.setPreRead32Hook((addr: number) => {
         r.write32(0x00000458, 0xbfc085b0);
       }
     }
-  }
-
-  enableCpuTrace(opts?: Partial<{ output: (line: string) => void; regsFormat: 'named' | 'index' }>) {
-    const out = opts?.output ?? ((s: string) => console.log(s));
-    const fmt = opts?.regsFormat ?? 'named';
-    const names = ['r0','at','v0','v1','a0','a1','a2','a3','t0','t1','t2','t3','t4','t5','t6','t7','s0','s1','s2','s3','s4','s5','s6','s7','t8','t9','k0','k1','gp','sp','fp','ra'];
-    const cpuAny = this.cpu as any;
-    if (cpuAny.setTracer) {
-      cpuAny.setTracer((pc: number, instr: number, s: import('@ai-psx/cpu').CPUState) => {
-        const r = s.regs; const regStr = fmt === 'named'
-          ? names.map((n, i) => `${n}=${(r[i] >>> 0).toString(16).padStart(8,'0')}`).join(' ')
-          : Array.from({ length: 32 }, (_, i) => `r${i.toString().padStart(2,'0')}=${(r[i]>>>0).toString(16).padStart(8,'0')}`).join(' ');
-        const line = `pc=${pc.toString(16).padStart(8,'0')} instr=${instr.toString(16).padStart(8,'0')} hi=${(s.hi>>>0).toString(16).padStart(8,'0')} lo=${(s.lo>>>0).toString(16).padStart(8,'0')} ${regStr}`;
-        out(line);
-      });
+    
+    // Fix B0:3d (std_in_gets) - should point to RAM after kernel copy
+    const b03dAddr = 0x874 + (0x3d << 2); // 0x968
+    const b03dVal = r.read32(b03dAddr) >>> 0;
+    // Check if it's still pointing to ROM but kernel has been copied
+    if (b03dVal === 0xbfc00a9c || b03dVal === 0) {
+      // Check if kernel function has been copied to RAM (around 0x406c)
+      const kernelCheck = r.read32(0x0000406c) >>> 0;
+      if (kernelCheck !== 0 && kernelCheck !== 0xffffffff) {
+        // Kernel has been copied, update to RAM pointer
+        r.write32(b03dAddr, 0x0000406c);
+      }
     }
   }
 
-  enableMemTrace(opts?: Partial<{ output: (line: string) => void; filter: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number) => boolean }>) {
+  enableCpuTrace(opts?: Partial<{ 
+    output: (line: string) => void; 
+    style?: 'redux' | 'raw';
+    includeDisasm?: boolean;
+    regsFormat?: 'named' | 'index';
+    includeRegsParens?: boolean;
+  }>) {
+    const out = opts?.output ?? ((s: string) => console.log(s));
+    const style = opts?.style ?? 'raw';
+    const includeDisasm = opts?.includeDisasm ?? (style === 'redux');
+    const fmt = opts?.regsFormat ?? 'named';
+    const includeRegsParens = opts?.includeRegsParens ?? (style === 'redux');
+    const names = ['r0','at','v0','v1','a0','a1','a2','a3','t0','t1','t2','t3','t4','t5','t6','t7','s0','s1','s2','s3','s4','s5','s6','s7','t8','t9','k0','k1','gp','sp','fp','ra'];
+    
+    // Try to load disassembler if needed
+    let disasmMips: ((pc: number, instr: number, regs?: ReadonlyArray<number>) => string) | undefined;
+    if (includeDisasm && style === 'redux') {
+      try {
+        // Try dynamic import - will fail in browser but work in Node
+        const disasmPath = '../../tools/trace-compare/src/disasm/mips.js';
+        import(disasmPath).then(mod => {
+          disasmMips = mod.disasmMips;
+        }).catch(() => {});
+      } catch {}
+    }
+    
+    const cpuAny = this.cpu as any;
+    if (cpuAny.setTracer) {
+      cpuAny.setTracer((pc: number, instr: number, s: import('@ai-psx/cpu').CPUState) => {
+        // Update bus with current PC for memory trace context
+        const busAny = cpuAny.mem as CPUHostBus;
+        if (busAny && busAny.setCurrentPc) {
+          busAny.setCurrentPc(pc);
+        }
+        
+        const pcHex = pc.toString(16).padStart(8, '0');
+        const instrHex = instr.toString(16).padStart(8, '0');
+        
+        if (style === 'redux') {
+          // PCSX-Redux format: "pppppppp iiiiiiii: <disasm>"
+          let disasm = '';
+          if (includeDisasm) {
+            if (disasmMips) {
+              // Use real disassembler if available
+              const regsArray = includeRegsParens ? Array.from(s.regs) : undefined;
+              disasm = disasmMips(pc, instr, regsArray);
+            } else {
+              // Fallback: basic decoding without full disassembler
+              disasm = this.basicDisasm(instr, s.regs, includeRegsParens);
+            }
+          }
+          const line = `${pcHex} ${instrHex}: ${disasm}`;
+          out(line);
+        } else {
+          // Raw format (existing behavior)
+          const r = s.regs;
+          const regStr = fmt === 'named'
+            ? names.map((n, i) => `${n}=${(r[i] >>> 0).toString(16).padStart(8,'0')}`).join(' ')
+            : Array.from({ length: 32 }, (_, i) => `r${i.toString().padStart(2,'0')}=${(r[i]>>>0).toString(16).padStart(8,'0')}`).join(' ');
+          const line = `pc=${pcHex} instr=${instrHex} hi=${(s.hi>>>0).toString(16).padStart(8,'0')} lo=${(s.lo>>>0).toString(16).padStart(8,'0')} ${regStr}`;
+          out(line);
+        }
+      });
+    }
+  }
+  
+  // Basic disassembly fallback when full disassembler not available
+  private basicDisasm(instr: number, regs: Int32Array, includeParens: boolean): string {
+    const op = (instr >>> 26) & 0x3f;
+    const rs = (instr >>> 21) & 0x1f;
+    const rt = (instr >>> 16) & 0x1f;
+    const rd = (instr >>> 11) & 0x1f;
+    const imm = instr & 0xffff;
+    const names = ['zero','at','v0','v1','a0','a1','a2','a3','t0','t1','t2','t3','t4','t5','t6','t7','s0','s1','s2','s3','s4','s5','s6','s7','t8','t9','k0','k1','gp','sp','fp','ra'];
+    
+    const formatReg = (idx: number): string => {
+      const name = names[idx];
+      if (includeParens) {
+        const val = (regs[idx] >>> 0).toString(16).padStart(8, '0');
+        return `$${name}(${val})`;
+      }
+      return `$${name}`;
+    };
+    
+    // Very basic mnemonic detection
+    switch (op) {
+      case 0x00: // SPECIAL
+        if (instr === 0) return 'nop    ';
+        const fn = instr & 0x3f;
+        if (fn === 0x08) return `jr      ${formatReg(rs)}`;
+        if (fn === 0x25) { // OR (detect move)
+          if (rt === 0) return `move    ${formatReg(rd)}, ${formatReg(rs)}`;
+        }
+        return '...';
+      case 0x02: return `j       0x${((instr & 0x03ffffff) << 2).toString(16).padStart(8, '0')}`;
+      case 0x03: return `jal     0x${((instr & 0x03ffffff) << 2).toString(16).padStart(8, '0')}`;
+      case 0x0f: return `lui     ${formatReg(rt)}, 0x${imm.toString(16).padStart(4, '0')}`;
+      case 0x0d: return `ori     ${formatReg(rt)}, ${formatReg(rs)}, 0x${imm.toString(16).padStart(4, '0')}`;
+      case 0x23: return `lw      ${formatReg(rt)}, 0x${imm.toString(16)}(${names[rs]})`;
+      case 0x2b: return `sw      ${formatReg(rt)}, 0x${imm.toString(16)}(${names[rs]})`;
+      case 0x09: // ADDIU
+        if (rs === 0) return `li      ${formatReg(rt)}, 0x${imm.toString(16)}`;
+        return `addiu   ${formatReg(rt)}, ${formatReg(rs)}, 0x${imm.toString(16)}`;
+      default:
+        return '...';
+    }
+  }
+
+  enableMemTrace(opts?: Partial<{ 
+    output: (line: string) => void; 
+    filter: (op: 'r8'|'r16'|'r32'|'w8'|'w16'|'w32', addr: number) => boolean;
+    attachPc?: boolean;
+    format?: 'redux' | 'raw';
+  }>) {
     const out = opts?.output ?? ((s: string) => console.log(s));
     const filter = opts?.filter ?? ((op: any, addr: number) => {
       const p = addr >>> 0;
@@ -707,11 +880,52 @@ cpuBus.setPreRead32Hook((addr: number) => {
       const inScratch = p >= 0x1f800000 && p <= 0x1f8003ff;
       return inIO || inScratch;
     });
+    const attachPc = opts?.attachPc ?? true;
+    const format = opts?.format ?? 'raw';
+    
     const busAny = (this.cpu as any).mem as CPUHostBus;
     if (busAny && busAny.setMemTrace) {
-      busAny.setMemTrace((op, addr, val) => {
+      busAny.setMemTrace((op, addr, val, pc) => {
         if (!filter(op, addr)) return;
-        out(`${op} ${addr.toString(16).padStart(8,'0')} -> ${val.toString(16).padStart(8,'0')}`);
+        
+        const addrHex = addr.toString(16).padStart(8, '0');
+        const pcHex = pc.toString(16).padStart(8, '0');
+        let valHex: string;
+        
+        // Format value based on size
+        switch (op) {
+          case 'r8':
+          case 'w8':
+            valHex = val.toString(16).padStart(2, '0');
+            break;
+          case 'r16':
+          case 'w16':
+            valHex = val.toString(16).padStart(4, '0');
+            break;
+          default:
+            valHex = val.toString(16).padStart(8, '0');
+        }
+        
+        let line: string;
+        if (format === 'redux') {
+          // PCSX-Redux-like format
+          const isWrite = op.startsWith('w');
+          const sizeStr = op.substring(1); // '8', '16', or '32'
+          if (isWrite) {
+            line = `MEM w${sizeStr} [${addrHex}] = ${valHex}`;
+          } else {
+            line = `MEM r${sizeStr} [${addrHex}] -> ${valHex}`;
+          }
+        } else {
+          // Raw format (existing)
+          line = `${op} ${addrHex} -> ${valHex}`;
+        }
+        
+        if (attachPc) {
+          line += ` @pc=${pcHex}`;
+        }
+        
+        out(line);
       });
     }
   }
