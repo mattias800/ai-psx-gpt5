@@ -61,7 +61,8 @@ export class PSXSystem {
   public readonly intc = new InterruptController();
   public readonly gpu = new GPU();
   public readonly as = new AddressSpace();
-  public readonly ram = new MappedRAM(0x00000000, 2 * 1024 * 1024);
+  // PSX main RAM: 2MB physical, mirrored across 8MB address space
+  public readonly ram = new MappedRAM(0x00000000, 2 * 1024 * 1024, 8 * 1024 * 1024);
   public readonly iohub: IOHub;
   public readonly cpu: R3000A;
   public readonly dmac: DMAC;

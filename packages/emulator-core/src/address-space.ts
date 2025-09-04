@@ -3,21 +3,27 @@ import type { MemoryRegion, Bus } from './bus.js';
 
 export class MappedRAM implements MemoryRegion {
   private data: Uint8Array;
+  private mirrorSize: number;
   constructor(
     public base: number,
     public size: number,
+    mirrorSize?: number, // Total mirrored region size
   ) {
     if ((size & (size - 1)) !== 0) throw new Error('size must be power of two');
     this.data = new Uint8Array(size);
+    // PSX main RAM: 2MB mirrored across 8MB region
+    this.mirrorSize = mirrorSize ?? size;
   }
   private containsPhysical(p: number): boolean {
-    return p >= this.base && p < this.base + this.size;
+    // Check if in the mirrored region
+    return p >= this.base && p < this.base + this.mirrorSize;
   }
   contains(addr: number): boolean {
     return this.containsPhysical(toPhysical(addr));
   }
   private idx(addr: number): number {
     const p = toPhysical(addr) - this.base;
+    // Wrap within actual RAM size
     return p & (this.size - 1);
   }
   read8(addr: number): number {
