@@ -323,15 +323,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
   private installBiosCallStubs = (): void => {
     const w = (addr: number, val: number): void => { this.ram.write32(addr >>> 0, val >>> 0); };
 
-    // Install a trap at address 0 to catch bad returns
-    // jr $ra (loops forever if $ra is 0)
-    w(0x00000000, 0x03e00008); // jr $ra
-    w(0x00000004, 0x00000000); // nop
-    
-    // Also add a safety break pattern to avoid sliding into BIOS stubs
-    for (let addr = 0x08; addr < 0xa0; addr += 4) {
-      w(addr, 0x0000000d); // break instruction to catch runaway execution
-    }
+    // Don't install anything at address 0 initially - the BIOS needs to clear memory
+    // We'll install the safety trap later, after BIOS initialization
 
     // A0 entry: lui t0, 0; addiu t0, t0, 0x05C4; jr t0; nop
     w(0x000000a0, 0x3c080000);
