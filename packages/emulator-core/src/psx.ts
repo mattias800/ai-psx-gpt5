@@ -323,6 +323,16 @@ cpuBus.setPreRead32Hook((addr: number) => {
   private installBiosCallStubs = (): void => {
     const w = (addr: number, val: number): void => { this.ram.write32(addr >>> 0, val >>> 0); };
 
+    // Install a trap at address 0 to catch bad returns
+    // jr $ra (loops forever if $ra is 0)
+    w(0x00000000, 0x03e00008); // jr $ra
+    w(0x00000004, 0x00000000); // nop
+    
+    // Also add a safety break pattern to avoid sliding into BIOS stubs
+    for (let addr = 0x08; addr < 0xa0; addr += 4) {
+      w(addr, 0x0000000d); // break instruction to catch runaway execution
+    }
+
     // A0 entry: lui t0, 0; addiu t0, t0, 0x05C4; jr t0; nop
     w(0x000000a0, 0x3c080000);
     w(0x000000a4, 0x250805c4);
@@ -754,6 +764,93 @@ cpuBus.setPreRead32Hook((addr: number) => {
       if (kernelCheck !== 0 && kernelCheck !== 0xffffffff) {
         // Kernel has been copied, update to RAM pointer
         r.write32(b03dAddr, 0x0000406c);
+      }
+    }
+    
+    // Fix C0:08 (SysInitMemory) - should point to RAM after kernel copy
+    const c008Addr = 0x674 + (0x08 << 2); // 0x694
+    const c008Val = r.read32(c008Addr) >>> 0;
+    // Check if it's still pointing to ROM but kernel has been copied
+    if (c008Val === 0xbfc06ea0 || c008Val === 0) {
+      // Check if kernel function has been copied to RAM (around 0x113c)
+      const kernelCheck = r.read32(0x0000113c) >>> 0;
+      if (kernelCheck !== 0 && kernelCheck !== 0xffffffff) {
+        // Kernel has been copied, update to RAM pointer
+        r.write32(c008Addr, 0x0000113c);
+      }
+    }
+    
+    // Fix B0:00 (SysMalloc) and other commonly relocated B0 functions
+    const b0Relocations: { [key: number]: { rom: number; ram: number } } = {
+      0x00: { rom: 0xbfc06ff0, ram: 0x00001174 },  // SysMalloc
+      0x01: { rom: 0xbfc07024, ram: 0x000011a8 },  // AllocSysMemory
+      0x02: { rom: 0xbfc06fcc, ram: 0x00001150 },  // SysFree
+      0x03: { rom: 0xbfc06fa8, ram: 0x0000112c },  // FreeSysMemory
+      0x0a: { rom: 0xbfc012f4, ram: 0x00002a4c },  // OpenEvent
+      0x0b: { rom: 0xbfc01474, ram: 0x00002bcc },  // CloseEvent
+      0x0c: { rom: 0xbfc014c8, ram: 0x00002c20 },  // WaitEvent
+      0x0d: { rom: 0xbfc01578, ram: 0x00002cd0 },  // TestEvent
+      0x0e: { rom: 0xbfc01614, ram: 0x00002d6c },  // EnableEvent
+      0x0f: { rom: 0xbfc01674, ram: 0x00002dcc },  // DisableEvent
+      0x10: { rom: 0xbfc016d4, ram: 0x00002e2c },  // OpenThread
+      0x11: { rom: 0xbfc01754, ram: 0x00002eac },  // CloseThread
+      0x12: { rom: 0xbfc01780, ram: 0x00002ed8 },  // ChangeThread
+      0x20: { rom: 0xbfc02150, ram: 0x000033a8 },  // UnDeliverEvent
+      0x54: { rom: 0xbfc07a10, ram: 0x00001c68 },  // SysEnqIntRP
+      0x55: { rom: 0xbfc079e0, ram: 0x00001c38 },  // SysDeqIntRP
+    };
+    
+    for (const [index, addrs] of Object.entries(b0Relocations)) {
+      const tableAddr = 0x874 + (parseInt(index) << 2);
+      const currentVal = r.read32(tableAddr) >>> 0;
+      if (currentVal === addrs.rom || currentVal === 0) {
+        // Check if RAM version exists
+        const kernelCheck = r.read32(addrs.ram) >>> 0;
+        if (kernelCheck !== 0 && kernelCheck !== 0xffffffff) {
+          r.write32(tableAddr, addrs.ram);
+        }
+      }
+    }
+    
+    // Fix commonly relocated C0 functions
+    const c0Relocations: { [key: number]: { rom: number; ram: number } } = {
+      0x00: { rom: 0xbfc06310, ram: 0x00000a68 },  // EnqueueTimerAndVblankIrqs
+      0x01: { rom: 0xbfc063b0, ram: 0x00001b20 },  // EnqueueSyscallHandler (corrected)
+      0x02: { rom: 0xbfc067f0, ram: 0x00000f48 },  // SysEnqIntRP
+      0x03: { rom: 0xbfc06808, ram: 0x00000f60 },  // SysDeqIntRP  
+      0x07: { rom: 0xbfc06de0, ram: 0x00001538 },  // InstallExceptionHandlers
+      0x08: { rom: 0xbfc06ea0, ram: 0x0000113c },  // SysInitMemory (already handled above)
+      0x09: { rom: 0xbfc06f30, ram: 0x00001688 },  // SysInitKMem
+      0x0b: { rom: 0xbfc06fc0, ram: 0x00001718 },  // SystemError
+      0x0c: { rom: 0xbfc06ef8, ram: 0x00001650 },  // InitDefInt - primary relocation
+    };
+    
+    for (const [index, addrs] of Object.entries(c0Relocations)) {
+      const tableAddr = 0x674 + (parseInt(index) << 2);
+      const currentVal = r.read32(tableAddr) >>> 0;
+      if (currentVal === addrs.rom || currentVal === 0) {
+        // Check if RAM version exists
+        const kernelCheck = r.read32(addrs.ram) >>> 0;
+        if (kernelCheck !== 0 && kernelCheck !== 0xffffffff) {
+          r.write32(tableAddr, addrs.ram);
+        }
+      }
+    }
+    
+    // Special handling for C0:0c (InitDefInt) which has multiple relocation stages
+    // First it relocates from ROM (0xbfc06ef8) to RAM (0x00001650)
+    // Then later during boot it may relocate again to 0x00002724
+    const c00cAddr = 0x674 + (0x0c << 2); // 0x6a4
+    const c00cVal = r.read32(c00cAddr) >>> 0;
+    
+    // Check if we're in the second stage relocation phase
+    // This happens around instruction 121,442 when the BIOS expects 0x2724
+    if (c00cVal === 0x00001650) {
+      // Check if the second stage location has been populated
+      const secondStageCheck = r.read32(0x00002724) >>> 0;
+      if (secondStageCheck !== 0 && secondStageCheck !== 0xffffffff) {
+        // Second stage relocation is ready, update the pointer
+        r.write32(c00cAddr, 0x00002724);
       }
     }
   }

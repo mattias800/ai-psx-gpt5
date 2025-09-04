@@ -1,0 +1,22 @@
+
+ RUN  v2.1.9 /Users/mattias800/temp/ai-psx-gpt5
+
+stdout | tests/manual/bios-animation-capture.test.ts > BIOS animation capture (simulated if needed) > captures multiple frames when VRAM changes
+frame 0 -> bios-anim-00.png
+frame 1 -> bios-anim-01.png
+frame 2 -> bios-anim-02.png
+frame 3 -> bios-anim-03.png
+frame 4 -> bios-anim-04.png
+frame 5 -> bios-anim-05.png
+frame 6 -> bios-anim-06.png
+frame 7 -> bios-anim-07.png
+animation-detected frames=8
+
+ ✓ tests/manual/bios-animation-capture.test.ts (1 test) 3192ms
+   ✓ BIOS animation capture (simulated if needed) > captures multiple frames when VRAM changes 3192ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  15:58:15
+   Duration  3.63s (transform 149ms, setup 0ms, collect 179ms, tests 3.19s, environment 0ms, prepare 46ms)
+
