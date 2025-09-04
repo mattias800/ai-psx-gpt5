@@ -105,10 +105,19 @@ sys.enableCpuTrace({
 // Run for a long time
 console.log('Running BIOS and monitoring for milestones...\n');
 const maxInstructions = 10000000;
+const cyclesPerInstruction = 1; // Simplified - actual varies
+let totalCycles = 0;
 
 try {
   for (let i = 0; i < maxInstructions; i++) {
     sys.stepCpu(1);
+    totalCycles += cyclesPerInstruction;
+    
+    // Step the scheduler to trigger VBLANK and other timed events
+    // VBLANK occurs roughly every 263 scanlines * 3413 cycles/line = ~897,619 cycles
+    if (totalCycles % 1000 === 0) {
+      sys.stepCycles(1000);
+    }
     
     // Report progress
     if ((i + 1) % 500000 === 0) {

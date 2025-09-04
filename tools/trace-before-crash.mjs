@@ -2,10 +2,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { PSXSystem } from '@ai-psx/core';
 
-// Simple BIOS tracer. Usage:
-//   node tools/trace-bios.mjs [instrCount]
-// Requires a BIOS at ./pc1001.bin (or PC1001.BIN/scph1001.bin/scph1001.BIN)
-
 function readBIOS() {
   const names = ['pc1001.bin','PC1001.BIN','scph1001.bin','SCPH1001.BIN'];
   for (const n of names) {
@@ -15,25 +11,28 @@ function readBIOS() {
   process.exit(1);
 }
 
-const count = Number(process.argv[2] ?? '200000') | 0;
 const bios = readBIOS();
-
 const psx = new PSXSystem();
 psx.loadBIOS(bios);
 
 const instrLines = [];
-const memLines = [];
 psx.enableCpuTrace({ output: (s) => instrLines.push(s), regsFormat: 'named' });
-psx.enableMemTrace({ output: (s) => memLines.push(s) });
 
 // Start at BIOS entry
 (psx).cpu.s.pc = 0xbfc00000 >>> 0;
 (psx).cpu.s.nextPc = 0xbfc00004 >>> 0;
 
-for (let i = 0; i < count; i++) psx.cpu.step();
+// Run until just before the bad A0 call
+for (let i = 0; i < 138210; i++) psx.cpu.step();
 
-writeFileSync('bios.trace', instrLines.join('\n'));
-writeFileSync('bios-mem.trace', memLines.join('\n'));
+// Get the last 20 instructions before the bad call
+const lastLines = instrLines.slice(-20);
+console.log('Last 20 instructions before A0 call with bad t1:');
+console.log('=================================================');
+for (const line of lastLines) {
+  console.log(line);
+}
 
-console.log(`Wrote bios.trace (${instrLines.length} lines) and bios-mem.trace (${memLines.length} lines).`);
-
+console.log('\nNext instruction would be the A0 call with t1=' + 
+            (psx.cpu.s.regs[9] >>> 0).toString(16));
+console.log('Current PC: 0x' + (psx.cpu.s.pc >>> 0).toString(16));

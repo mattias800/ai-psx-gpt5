@@ -303,8 +303,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
       },
     } as BIOSProvider & { _d: Uint8Array };
     this.as.addRegion(new BIOSRegion(provider));
-    // Populate kernel BIOS call trampolines in RAM so jumps to 0xA0/0xB0/0xC0 work immediately.
-    this.installBiosCallStubs();
+    // DON'T install BIOS call stubs here - BIOS will clear memory 0x000-0xF80 early on
+    // We'll install them lazily after the BIOS clear loop completes
     // Initialize hardware to expected state to prevent BIOS errors
     initializeHardware(this);
     // Install bad jump prevention
@@ -313,6 +313,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
     if (!this.display) {
       this.attachDisplay({ cyclesPerLine: 3413, linesPerFrame: 263 }); // NTSC timings
     }
+    // Install hook to add stubs after BIOS clears memory
+    this.installBiosStubAfterClearHook();
   }
 
   // Install BIOS call stubs used by PS1 kernel:
@@ -323,8 +325,13 @@ cpuBus.setPreRead32Hook((addr: number) => {
   private installBiosCallStubs = (): void => {
     const w = (addr: number, val: number): void => { this.ram.write32(addr >>> 0, val >>> 0); };
 
-    // Don't install anything at address 0 initially - the BIOS needs to clear memory
-    // We'll install the safety trap later, after BIOS initialization
+    // CRITICAL FIX: Install proper safety trap at address 0 to prevent null pointer jumps
+    // This MUST check and fix t1 to be a valid function index, not an arbitrary value
+    // li t1, 0; jr ra; nop; nop  (return with t1=0 for safety)
+    w(0x00000000, 0x24090000);  // li t1, 0
+    w(0x00000004, 0x03e00008);  // jr ra
+    w(0x00000008, 0x00000000);  // nop
+    w(0x0000000c, 0x00000000);  // nop
 
     // A0 entry: lui t0, 0; addiu t0, t0, 0x05C4; jr t0; nop
     w(0x000000a0, 0x3c080000);
@@ -332,46 +339,54 @@ cpuBus.setPreRead32Hook((addr: number) => {
     w(0x000000a8, 0x01000008);
     w(0x000000ac, 0x00000000);
     // A0 dispatcher at 0x05C4:
-    //  li t0, 0x0200; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    w(0x000005c4, 0x24080200);
-    w(0x000005c8, 0x00094880);
-    w(0x000005cc, 0x01094020);
-    w(0x000005d0, 0x8d080000);
-    w(0x000005d4, 0x00000000);
-    w(0x000005d8, 0x01000008);
-    w(0x000005dc, 0x00000000);
+    // CRITICAL FIX: Check t1 is valid before using it as an index
+    // If t1 >= 0x100, it's invalid - just return
+    // sltiu at, t1, 0x100; beq at, zero, +20; nop
+    // li t0, 0x0200; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
+    // jr ra; nop (for invalid case)
+    w(0x000005c4, 0x2d210100);  // sltiu at, t1, 0x100
+    w(0x000005c8, 0x10200005);  // beq at, zero, +20 (skip to jr ra)
+    w(0x000005cc, 0x24080200);  // li t0, 0x0200 (delay slot)
+    w(0x000005d0, 0x00094880);  // sll t1,t1,2
+    w(0x000005d4, 0x01094020);  // add t0,t0,t1
+    w(0x000005d8, 0x8d080000);  // lw t0,0(t0)
+    w(0x000005dc, 0x00000000);  // nop
+    w(0x000005e0, 0x01000008);  // jr t0
+    w(0x000005e4, 0x00000000);  // nop
+    w(0x000005e8, 0x03e00008);  // jr ra (for invalid case)
+    w(0x000005ec, 0x00000000);  // nop
 
-    // B0 entry: lui t0, 0; addiu t0, t0, 0x05E0; jr t0; nop
+    // B0 entry: lui t0, 0; addiu t0, t0, 0x05F0; jr t0; nop
     w(0x000000b0, 0x3c080000);
-    w(0x000000b4, 0x250805e0);
+    w(0x000000b4, 0x250805f0);
     w(0x000000b8, 0x01000008);
     w(0x000000bc, 0x00000000);
-    // B0 dispatcher at 0x05E0:
+    // B0 dispatcher at 0x05F0:
     //  lui t0, 0; addiu t0, t0, 0x0874; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    w(0x000005e0, 0x3c080000);
-    w(0x000005e4, 0x25080874);
-    w(0x000005e8, 0x00094880);
-    w(0x000005ec, 0x01094020);
-    w(0x000005f0, 0x8d080000);
-    w(0x000005f4, 0x00000000);
-    w(0x000005f8, 0x01000008);
-    w(0x000005fc, 0x00000000);
+    w(0x000005f0, 0x3c080000);
+    w(0x000005f4, 0x25080874);
+    w(0x000005f8, 0x00094880);
+    w(0x000005fc, 0x01094020);
+    w(0x00000600, 0x8d080000);  // Note: This overlaps with C0 entry
+    w(0x00000604, 0x00000000);
+    w(0x00000608, 0x01000008);
+    w(0x0000060c, 0x00000000);
 
-    // C0 entry: lui t0, 0; addiu t0, t0, 0x0600; jr t0; nop
+    // C0 entry: lui t0, 0; addiu t0, t0, 0x0620; jr t0; nop
     w(0x000000c0, 0x3c080000);
-    w(0x000000c4, 0x25080600);
+    w(0x000000c4, 0x25080620);
     w(0x000000c8, 0x01000008);
     w(0x000000cc, 0x00000000);
-    // C0 dispatcher at 0x0600:
+    // C0 dispatcher at 0x0620:
     //  lui t0, 0; addiu t0, t0, 0x0674; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    w(0x00000600, 0x3c080000);
-    w(0x00000604, 0x25080674);
-    w(0x00000608, 0x00094880);
-    w(0x0000060c, 0x01094020);
-    w(0x00000610, 0x8d080000);
-    w(0x00000614, 0x00000000);
-    w(0x00000618, 0x01000008);
-    w(0x0000061c, 0x00000000);
+    w(0x00000620, 0x3c080000);
+    w(0x00000624, 0x25080674);
+    w(0x00000628, 0x00094880);
+    w(0x0000062c, 0x01094020);
+    w(0x00000630, 0x8d080000);
+    w(0x00000634, 0x00000000);
+    w(0x00000638, 0x01000008);
+    w(0x0000063c, 0x00000000);
     
     // Critical B0 function table entry at 0x8D4 (B0:0x18)
     // The BIOS dispatcher will load from 0x874 + (0x18 << 2) = 0x8D4
@@ -393,6 +408,16 @@ cpuBus.setPreRead32Hook((addr: number) => {
     // Common A0 function table entries pointing to BIOS ROM
     // These are frequently used by BIOS during initialization
     const a0Entries: { [key: number]: number } = {
+      0x00: 0xbfc01f6c,  // open (CRITICAL - prevents null pointer deref)
+      0x01: 0xbfc02090,  // lseek
+      0x02: 0xbfc020e4,  // read
+      0x03: 0xbfc020b0,  // write
+      0x04: 0xbfc020c8,  // close
+      0x05: 0xbfc024f0,  // ioctl
+      0x06: 0xbfc024d0,  // exit
+      0x07: 0xbfc024e0,  // isatty
+      0x08: 0xbfc021b0,  // getc
+      0x09: 0xbfc021dc,  // putc
       0x0a: 0xbfc022c0,  // todigit
       0x0b: 0xbfc02590,  // atoi
       0x0c: 0xbfc025b0,  // atol
@@ -626,8 +651,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
     if (a >= 0x000005c4 && a <= 0x000005dc) return true;
     // B0 dispatcher
     if (a >= 0x000005e0 && a <= 0x000005fc) return true;
-    // C0 dispatcher
-    if (a >= 0x00000600 && a <= 0x0000061c) return true;
+    // C0 dispatcher at new location
+    if (a >= 0x00000620 && a <= 0x0000063c) return true;
     // A0 function table entry at 0x2a8
     if (a === 0x000002a8) return true;
     // A0 function table entry at 0x310
@@ -643,6 +668,30 @@ cpuBus.setPreRead32Hook((addr: number) => {
     // Stub handler at 0xF2C-0xF3C
     if (a >= 0x00000f2c && a <= 0x00000f3c) return true;
     return false;
+  }
+
+  // Install hook to add BIOS stubs after the initial memory clear
+  private installBiosStubAfterClearHook(): void {
+    let clearLoopCompleted = false;
+    const cpuAny = this.cpu as any;
+    
+    console.log('[BIOS Stub Hook] Installing hook to detect clear loop completion');
+    
+    // Save any existing tracer function
+    const existingTracer = cpuAny.tracer;
+    
+    cpuAny.setTracer((pc: number, instr: number, s: import('@ai-psx/cpu').CPUState) => {
+      // Check if we've passed the early memory clear loop (exits to 0xbfc00278)
+      if (!clearLoopCompleted && pc === 0xbfc00278) {
+        clearLoopCompleted = true;
+        console.log('[BIOS Stub Hook] Memory clear loop completed at PC=0xbfc00278, installing BIOS call stubs');
+        this.installBiosCallStubs();
+        // Remove this hook, restore original tracer if any
+        cpuAny.setTracer(existingTracer);
+      }
+      // Call existing tracer if present
+      if (existingTracer) existingTracer(pc, instr, s);
+    });
   }
 
   // Install prevention for bad jumps to ASCII text addresses
@@ -699,7 +748,12 @@ cpuBus.setPreRead32Hook((addr: number) => {
     const okC0 = (r.read32(0x000000c0) >>> 0) === (0x3c080000 >>> 0);
     const okAD = (r.read32(0x000005c4) >>> 0) === (0x24080200 >>> 0);
     const okBD = (r.read32(0x000005e0) >>> 0) === (0x3c080000 >>> 0);
-    const okCD = (r.read32(0x00000600) >>> 0) === (0x3c080000 >>> 0);
+    const okCD = (r.read32(0x00000620) >>> 0) === (0x3c080000 >>> 0);
+    
+    // Check A0:00 specifically - it should never be 0 after BIOS init
+    const a000Val = r.read32(0x00000200) >>> 0;
+    const okA000 = a000Val !== 0;
+    
     const okA02aTable = (r.read32(0x000002a8) >>> 0) === (0xbfc02b50 >>> 0);
     const okA044Table = (r.read32(0x00000310) >>> 0) === (0xbfc01920 >>> 0);
     
@@ -716,7 +770,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
     const okB047Table = (r.read32(0x00000990) >>> 0) === (0x00003c2c >>> 0);
     const okStubHandler = (r.read32(0x00000f2c) >>> 0) === (0x3c020000 >>> 0);
     
-    if (!(okA0 && okB0 && okC0 && okAD && okBD && okCD && okA02aTable && okA044Table && okA099Table && okA096Table && okC0Table && okB0Table && okB047Table && okStubHandler)) {
+    if (!(okA0 && okB0 && okC0 && okAD && okBD && okCD && okA000 && okA02aTable && okA044Table && okA099Table && okA096Table && okC0Table && okB0Table && okB047Table && okStubHandler)) {
       this.installBiosCallStubs();
     }
     
