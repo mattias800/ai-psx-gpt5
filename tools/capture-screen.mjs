@@ -44,24 +44,48 @@ sys.intc.raise = function(irq) {
   return origRaise(irq);
 };
 
-console.log('Running BIOS for 5 hardware seconds...');
+// Allow duration override via CLI or env (default 5 seconds)
+const parseSeconds = () => {
+  const arg = process.argv.find(a => a.startsWith('--seconds='));
+  const cli = arg ? Number(arg.split('=')[1]) : NaN;
+  const env = Number(process.env.CAPTURE_SEC || process.env.SECONDS || '');
+  const s = Number.isFinite(cli) && cli > 0 ? Math.floor(cli) : (Number.isFinite(env) && env > 0 ? Math.floor(env) : 5);
+  return s;
+};
+const secondsToRun = parseSeconds();
+
+console.log(`Running BIOS for ${secondsToRun} hardware seconds...`);
 console.log('PSX CPU runs at 33.8688 MHz\n');
 
-// Run for 5 seconds worth of cycles (33.8688 MHz * 5)
-const targetCycles = Math.floor(33.8688 * 1000000 * 5); // ~169 million cycles
-const stepsPerIteration = 10000; // Process 10k cycles at a time
+// Run for N seconds worth of cycles (33.8688 MHz * seconds)
+const targetCycles = Math.floor(33.8688 * 1_000_000 * secondsToRun);
 
 const startTime = Date.now();
+const startCpuCycles = (sys.cpu.s.cycles >>> 0);
+const targetCpuCycles = (startCpuCycles + targetCycles) >>> 0;
+let nextProgressAt = 10_000_000; // cycles
 
-while (cycleCount < targetCycles) {
-  sys.stepCycles(stepsPerIteration);
-  cycleCount += stepsPerIteration;
-  
+while ((sys.cpu.s.cycles >>> 0) < targetCpuCycles) {
+  const before = (sys.cpu.s.cycles >>> 0);
+  // Step one instruction; CPU updates its internal cycle counter
+  sys.cpu.step();
+  const after = (sys.cpu.s.cycles >>> 0);
+  const delta = (after - before) >>> 0;
+  if (delta > 0) {
+    sys.stepCycles(delta); // advance hardware timers/DMAs by actual CPU cycles
+    cycleCount += delta;
+  } else {
+    // Fallback to avoid infinite loop on unexpected zero-delta
+    sys.stepCycles(1);
+    cycleCount += 1;
+  }
+
   // Show progress every 10 million cycles
-  if (cycleCount % 10000000 === 0) {
+  if (cycleCount >= nextProgressAt) {
     const elapsed = (Date.now() - startTime) / 1000;
     const percent = (cycleCount / targetCycles * 100).toFixed(1);
     console.log(`[${percent}%] ${cycleCount.toLocaleString()} cycles in ${elapsed.toFixed(1)}s`);
+    nextProgressAt += 10_000_000;
   }
 }
 

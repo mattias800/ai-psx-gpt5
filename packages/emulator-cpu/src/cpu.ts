@@ -78,7 +78,18 @@ export class R3000A {
     const target = (pc & 0xf0000000) | ((instr & 0x03ffffff) << 2);
 
     const r = this.s.regs;
-    const writeReg = (i: number, v: number) => { if (i !== 0) r[i] = v | 0; };
+    const writeReg = (i: number, v: number) => {
+      if (i !== 0) {
+        const nv = (v | 0);
+        r[i] = nv;
+        // Focused debug around BIOS dispatcher region: track writes to $v1 (3) and $t0 (8)
+        if (pc >= 0x00000400 && pc <= 0x00000650 && (i === 3 || i === 8)) {
+          const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+          // eslint-disable-next-line no-console
+          console.log(`[DBG-WREG] pc=${toHex(pc)} r${i}=${toHex(nv)} op=${toHex(op)} fn=${toHex(fn)} rs=${rs} rt=${rt} rd=${rd} sh=${sh}`);
+        }
+      }
+    };
 
     // Debug instrumentation for early BIOS clear-loop divergence
     if (pc === 0xbfc003c0 || pc === 0xbfc003c4) {
@@ -147,6 +158,11 @@ export class R3000A {
       case 0x00: { // SPECIAL
         switch (fn) {
           case 0x00: // SLL
+            if (pc === 0x000005e8) {
+              const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+              // eslint-disable-next-line no-console
+              console.log(`[DBG-SLL] pc=${toHex(pc)} rt=${rt} before=${toHex(r[rt])} sh=${sh}`);
+            }
             writeReg(rd, r[rt] << sh);
             break;
           case 0x02: // SRL
@@ -174,6 +190,11 @@ export class R3000A {
             this.s.nextPc = r[rs] >>> 0;
             break;
           case 0x20: // ADD
+            if (pc === 0x000005ec) {
+              const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+              // eslint-disable-next-line no-console
+              console.log(`[DBG-ADD] pc=${toHex(pc)} rs=${rs} rt=${rt} rsVal=${toHex(r[rs])} rtVal=${toHex(r[rt])}`);
+            }
             writeReg(rd, (r[rs] + r[rt]) | 0);
             break;
           case 0x21: // ADDU
@@ -329,6 +350,19 @@ export class R3000A {
       case 0x04: // BEQ
         if (r[rs] === r[rt]) this.s.nextPc = (this.s.pc + ((simm << 2) | 0)) >>> 0;
         break;
+      case 0x04: { // BEQ
+        if (pc === 0x8005a218) {
+          const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+          const rsVal = r[rs] | 0;
+          const rtVal = r[rt] | 0;
+          const istat = this.mem.read32(0x1f801070) >>> 0;
+          const imask = this.mem.read32(0x1f801074) >>> 0;
+          // eslint-disable-next-line no-console
+          console.log(`[DBG-BEQ] pc=${toHex(pc)} rs=${rs} rsVal=${toHex(rsVal)} rt=${rt} rtVal=${toHex(rtVal)} imm=${toHex(simm>>>0)} I_STAT=${toHex(istat)} I_MASK=${toHex(imask)} taken=${rsVal===rtVal}`);
+        }
+        if (r[rs] === r[rt]) this.s.nextPc = (this.s.pc + ((simm << 2) | 0)) >>> 0;
+        break;
+      }
       case 0x05: // BNE
         if (r[rs] !== r[rt]) this.s.nextPc = (this.s.pc + ((simm << 2) | 0)) >>> 0;
         break;
@@ -358,6 +392,11 @@ export class R3000A {
         writeReg(rt, (r[rs] + simm) | 0);
         break;
       case 0x09: // ADDIU
+        if (pc === 0x8005abf8 || pc === 0x000000a4) {
+          const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+          // eslint-disable-next-line no-console
+          console.log(`[DBG-ADDIU] pc=${toHex(pc)} rt=${rt} rs=${rs} rsVal=${toHex(r[rs])} imm=${toHex(simm>>>0)}`);
+        }
         writeReg(rt, (r[rs] + simm) | 0);
         break;
       case 0x0c: // ANDI
@@ -395,11 +434,22 @@ export class R3000A {
       }
       case 0x25: { // LHU
         const v = this.mem.read16(addr) & 0xffff;
+        if (pc === 0x8005a208 || pc === 0x8005a20c || pc === 0x8005a2e0 || pc === 0x8005a2e4) {
+          const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+          // eslint-disable-next-line no-console
+          console.log(`[DBG-LHU] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)} rt=${rt}`);
+        }
         writeReg(rt, v >>> 0);
         break;
       }
       case 0x23: { // LW
         const v = this.mem.read32(addr) >>> 0;
+        // Debug: log the dispatcher LW used for B0 table lookup
+        if (pc === 0x000005f0) {
+          const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
+          // eslint-disable-next-line no-console
+          console.log(`[DBG-LW] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)}`);
+        }
         writeReg(rt, v | 0);
         break;
       }
