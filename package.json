@@ -19,13 +19,14 @@
     "prepare": "husky",
     "prepublishOnly": "npm run -ws build",
     "trace:bios": "node tools/trace-bios.mjs",
-    "trace:pcsx-redux:bios": "TRACE_SEC=${TRACE_SEC:-2.0}; LOG=\"$(pwd)/pcsx-redux-bios.log\"; rm -f \"$LOG\"; /Applications/PCSX-Redux.app/Contents/MacOS/PCSX-Redux -run -interpreter -debugger -trace -stdout -bios \"$(pwd)/scph1001.bin\" > \"$LOG\" 2>/dev/null & pid=$!; sleep \"$TRACE_SEC\"; kill -INT $pid >/dev/null 2>&1 || true; sleep 0.2; kill -TERM $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true; wc -l \"$LOG\"",
+    "trace:pcsx-redux:bios": "TRACE_SEC=${TRACE_SEC:-3.0}; LOG=\"$(pwd)/pcsx-redux-bios.log\"; rm -f \"$LOG\"; /Applications/PCSX-Redux.app/Contents/MacOS/PCSX-Redux -run -interpreter -debugger -trace -stdout -bios \"$(pwd)/scph1001.bin\" > \"$LOG\" 2>/dev/null & pid=$!; sleep \"$TRACE_SEC\"; kill -INT $pid >/dev/null 2>&1 || true; sleep 0.2; kill -TERM $pid >/dev/null 2>&1 || true; wait $pid >/dev/null 2>&1 || true; wc -l \"$LOG\"",
     "gen:bios-tests": "node scripts/generate-bios-tests.mjs --log pcsx-redux-bios.log --out tests/generated --chunk 5000",
     "test:generated": "vitest -c vitest.generated.config.ts --run",
     "snapshot:sanity": "node tools/snapshot-sanity.mjs",
     "chunk:run": "node tools/chunk-with-snapshot-helper.mjs",
     "browser:serve": "node browser-test/server.js",
-    "chunks:run:nosnap": "PSX_FOLLOW_SPEC_PC=1 npx vitest -c vitest.generated.config.ts --run"
+    "chunks:run:nosnap": "PSX_FOLLOW_SPEC_PC=1 npx vitest -c vitest.generated.config.ts --run",
+    "trace:compare": "node tools/trace-compare/bin/trace-compare.js"
   },
   "workspaces": [
     "packages/*",

@@ -340,54 +340,46 @@ cpuBus.setPreRead32Hook((addr: number) => {
     w(0x000000a8, 0x01000008);
     w(0x000000ac, 0x00000000);
     // A0 dispatcher at 0x05C4:
-    // CRITICAL FIX: Check t1 is valid before using it as an index
-    // If t1 >= 0x100, it's invalid - just return
-    // sltiu at, t1, 0x100; beq at, zero, +20; nop
-    // li t0, 0x0200; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    // jr ra; nop (for invalid case)
-    w(0x000005c4, 0x2d210100);  // sltiu at, t1, 0x100
-    w(0x000005c8, 0x10200005);  // beq at, zero, +20 (skip to jr ra)
-    w(0x000005cc, 0x24080200);  // li t0, 0x0200 (delay slot)
-    w(0x000005d0, 0x00094880);  // sll t1,t1,2
-    w(0x000005d4, 0x01094020);  // add t0,t0,t1
-    w(0x000005d8, 0x8d080000);  // lw t0,0(t0)
-    w(0x000005dc, 0x00000000);  // nop
-    w(0x000005e0, 0x01000008);  // jr t0
-    w(0x000005e4, 0x00000000);  // nop
-    w(0x000005e8, 0x03e00008);  // jr ra (for invalid case)
-    w(0x000005ec, 0x00000000);  // nop
+    //  li t0, 0x0200; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
+    w(0x000005c4, 0x24080200);
+    w(0x000005c8, 0x00094880);
+    w(0x000005cc, 0x01094020);
+    w(0x000005d0, 0x8d080000);
+    w(0x000005d4, 0x00000000);
+    w(0x000005d8, 0x01000008);
+    w(0x000005dc, 0x00000000);
 
-    // B0 entry: lui t0, 0; addiu t0, t0, 0x05F0; jr t0; nop
+    // B0 entry: lui t0, 0; addiu t0, t0, 0x05E0; jr t0; nop
     w(0x000000b0, 0x3c080000);
-    w(0x000000b4, 0x250805f0);
+    w(0x000000b4, 0x250805e0);
     w(0x000000b8, 0x01000008);
     w(0x000000bc, 0x00000000);
-    // B0 dispatcher at 0x05F0:
+    // B0 dispatcher at 0x05E0:
     //  lui t0, 0; addiu t0, t0, 0x0874; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    w(0x000005f0, 0x3c080000);
-    w(0x000005f4, 0x25080874);
-    w(0x000005f8, 0x00094880);
-    w(0x000005fc, 0x01094020);
-    w(0x00000600, 0x8d080000);  // Note: This overlaps with C0 entry
-    w(0x00000604, 0x00000000);
-    w(0x00000608, 0x01000008);
-    w(0x0000060c, 0x00000000);
+    w(0x000005e0, 0x3c080000);
+    w(0x000005e4, 0x25080874);
+    w(0x000005e8, 0x00094880);
+    w(0x000005ec, 0x01094020);
+    w(0x000005f0, 0x8d080000);
+    w(0x000005f4, 0x00000000);
+    w(0x000005f8, 0x01000008);
+    w(0x000005fc, 0x00000000);
 
-    // C0 entry: lui t0, 0; addiu t0, t0, 0x0620; jr t0; nop
+    // C0 entry: lui t0, 0; addiu t0, t0, 0x0600; jr t0; nop
     w(0x000000c0, 0x3c080000);
-    w(0x000000c4, 0x25080620);
+    w(0x000000c4, 0x25080600);
     w(0x000000c8, 0x01000008);
     w(0x000000cc, 0x00000000);
-    // C0 dispatcher at 0x0620:
+    // C0 dispatcher at 0x0600:
     //  lui t0, 0; addiu t0, t0, 0x0674; sll t1,t1,2; add t0,t0,t1; lw t0,0(t0); nop; jr t0; nop
-    w(0x00000620, 0x3c080000);
-    w(0x00000624, 0x25080674);
-    w(0x00000628, 0x00094880);
-    w(0x0000062c, 0x01094020);
-    w(0x00000630, 0x8d080000);
-    w(0x00000634, 0x00000000);
-    w(0x00000638, 0x01000008);
-    w(0x0000063c, 0x00000000);
+    w(0x00000600, 0x3c080000);
+    w(0x00000604, 0x25080674);
+    w(0x00000608, 0x00094880);
+    w(0x0000060c, 0x01094020);
+    w(0x00000610, 0x8d080000);
+    w(0x00000614, 0x00000000);
+    w(0x00000618, 0x01000008);
+    w(0x0000061c, 0x00000000);
     
     // Critical B0 function table entry at 0x8D4 (B0:0x18)
     // The BIOS dispatcher will load from 0x874 + (0x18 << 2) = 0x8D4
@@ -652,8 +644,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
     if (a >= 0x000005c4 && a <= 0x000005dc) return true;
     // B0 dispatcher
     if (a >= 0x000005e0 && a <= 0x000005fc) return true;
-    // C0 dispatcher at new location
-    if (a >= 0x00000620 && a <= 0x0000063c) return true;
+    // C0 dispatcher
+    if (a >= 0x00000600 && a <= 0x0000061c) return true;
     // A0 function table entry at 0x2a8
     if (a === 0x000002a8) return true;
     // A0 function table entry at 0x310
@@ -662,6 +654,8 @@ cpuBus.setPreRead32Hook((addr: number) => {
     if (a === 0x00000464) return true;
     // C0 function table entry at 0x6BC
     if (a === 0x000006bc) return true;
+    // C0 function table range (indices 0x00..0x3F)
+    if (a >= 0x00000674 && a <= 0x00000770) return true;
     // B0 function table entry at 0x8D4
     if (a === 0x000008d4) return true;
     // B0:0x47 function table entry at 0x990
@@ -749,7 +743,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
     const okC0 = (r.read32(0x000000c0) >>> 0) === (0x3c080000 >>> 0);
     const okAD = (r.read32(0x000005c4) >>> 0) === (0x24080200 >>> 0);
     const okBD = (r.read32(0x000005e0) >>> 0) === (0x3c080000 >>> 0);
-    const okCD = (r.read32(0x00000620) >>> 0) === (0x3c080000 >>> 0);
+    const okCD = (r.read32(0x00000600) >>> 0) === (0x3c080000 >>> 0);
     
     // Check A0:00 specifically - it should never be 0 after BIOS init
     const a000Val = r.read32(0x00000200) >>> 0;
@@ -862,13 +856,16 @@ cpuBus.setPreRead32Hook((addr: number) => {
     
     // Fix commonly relocated C0 functions
     const c0Relocations: { [key: number]: { rom: number; ram: number } } = {
-      0x00: { rom: 0xbfc06310, ram: 0x00000a68 },  // EnqueueTimerAndVblankIrqs
-      0x01: { rom: 0xbfc063b0, ram: 0x00001b20 },  // EnqueueSyscallHandler (corrected)
-      0x02: { rom: 0xbfc067f0, ram: 0x00000f48 },  // SysEnqIntRP
-      0x03: { rom: 0xbfc06808, ram: 0x00000f60 },  // SysDeqIntRP  
-      0x07: { rom: 0xbfc06de0, ram: 0x00001538 },  // InstallExceptionHandlers
-      0x08: { rom: 0xbfc06ea0, ram: 0x0000113c },  // SysInitMemory (already handled above)
-      0x09: { rom: 0xbfc06f30, ram: 0x00001688 },  // SysInitKMem
+      0x00: { rom: 0xbfc06310, ram: 0x00001508 },  // EnqueueTimerAndVblankIrqs
+      0x01: { rom: 0xbfc063b0, ram: 0x00001b20 },  // EnqueueSyscallHandler
+      0x02: { rom: 0xbfc067f0, ram: 0x00001420 },  // SysEnqIntRP
+      0x03: { rom: 0xbfc06808, ram: 0x00001444 },  // SysDeqIntRP
+      0x04: { rom: 0xbfc023d0, ram: 0x00001d00 },  // get_free_EvCB_slot
+      0x05: { rom: 0xbfc023f0, ram: 0x00001f88 },  // get_free_TCB_slot
+      0x06: { rom: 0xbfc02410, ram: 0x00000c80 },  // ExceptionHandler
+      0x07: { rom: 0xbfc06de0, ram: 0x00000eb0 },  // InstallExceptionHandlers
+      0x08: { rom: 0xbfc06ea0, ram: 0x0000113c },  // SysInitMemory
+      0x09: { rom: 0xbfc06f30, ram: 0x00000500 },  // SysInitKMem (via ChangeClearRCnt trampoline)
       0x0b: { rom: 0xbfc06fc0, ram: 0x00001718 },  // SystemError
       0x0c: { rom: 0xbfc06ef8, ram: 0x00001650 },  // InitDefInt - primary relocation
     };
