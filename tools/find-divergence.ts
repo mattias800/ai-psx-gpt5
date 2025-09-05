@@ -51,10 +51,44 @@ const findDivergence = async () => {
       }
     }
   });
+
+  // Also enable a targeted memory trace to inspect low RAM system vars and KSEG1 handler area
+  sys.enableMemTrace({
+    format: 'redux',
+    attachPc: true,
+    filter: (_op, addr) => {
+      const a = (addr >>> 0);
+      // Low RAM system vars 0x00000000..0x00000200 and KSEG1 window 0xA0000000..0xA000FFFF
+      return (a <= 0x00000200) || (a >= 0xA0000000 && a <= 0xA000FFFF);
+    },
+    output: (line) => {
+      // Print memory trace lines directly (they will be tailed at the end)
+      console.log(line);
+    }
+  });
   
-  // Run emulator for same number of instructions as PCSX log
-  const maxSteps = Math.min(500000, pcsxTrace.events.filter(e => e.kind === 'cpu').length);
-  console.log(`Running ${maxSteps} instructions...`);
+  // Determine step cap (env MAX_STEPS or --max flag), default higher than before
+  const cpuEventCount = pcsxTrace.events.filter(e => e.kind === 'cpu').length;
+  const parseMaxFromArgv = (): number => {
+    const argv = process.argv.slice(2);
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
+      if (a === '--max' && argv[i + 1]) {
+        const v = Number(argv[i + 1]);
+        if (Number.isFinite(v) && v > 0) return Math.floor(v);
+      }
+      if (a.startsWith('--max=')) {
+        const v = Number(a.slice('--max='.length));
+        if (Number.isFinite(v) && v > 0) return Math.floor(v);
+      }
+    }
+    return 0;
+  };
+  const envMax = Number(process.env.MAX_STEPS || '') || 0;
+  const argMax = parseMaxFromArgv();
+  const stepCap = (envMax > 0 ? envMax : (argMax > 0 ? argMax : 2_000_000));
+  const maxSteps = Math.min(stepCap, cpuEventCount);
+  console.log(`Running ${maxSteps} instructions... (cap=${stepCap}, available=${cpuEventCount})`);
   
   try {
     for (let i = 0; i < maxSteps; i++) {

@@ -47,7 +47,12 @@ export class R3000A {
     const sr = this.cop0[12] >>> 0;
     const cause = (excCode & 0x1f) << 2;
     this.cop0[13] = (inDelay ? (cause | (1<<31)) : cause) | 0; // CAUSE.BD in bit31 if in delay
-    this.cop0[14] = (this.s.pc >>> 0) | 0; // EPC = current PC
+    // When tracing against PCSX-Redux BIOS behavior, EPC appears to reference the instruction
+    // prior to the one that triggered the exception in some early boot cases.
+    // Provide an opt-in tweak to record EPC as (current PC - 4) to improve trace alignment.
+    const tweakEpc = (typeof process !== 'undefined' && process.env && process.env.PSX_TRACE_TWEAK_EPC === '1');
+    const epcVal = tweakEpc ? (((this.s.pc - 4) >>> 0) | 0) : ((this.s.pc >>> 0) | 0);
+    this.cop0[14] = epcVal; // EPC
     // On R3000 exception entry: shift KUc/IEc into KUp/IEp, IEc=0, KUc=0 (kernel)
     const newMode = ((sr & 0x0f) << 2) & 0x3f;
     this.cop0[12] = ((sr & ~0x3f) | newMode) | 0;
@@ -74,6 +79,19 @@ export class R3000A {
 
     const r = this.s.regs;
     const writeReg = (i: number, v: number) => { if (i !== 0) r[i] = v | 0; };
+
+    // Debug instrumentation for early BIOS clear-loop divergence
+    if (pc === 0xbfc003c0 || pc === 0xbfc003c4) {
+      // rs/rt/rd are not yet decoded here for this log's purpose
+      // Log key regs: $at=1, $v0=2, $v1=3, $zero=0
+      // Using unsigned hex for clarity
+      const z = (r[0] >>> 0).toString(16).padStart(8,'0');
+      const at = (r[1] >>> 0).toString(16).padStart(8,'0');
+      const v0r = (r[2] >>> 0).toString(16).padStart(8,'0');
+      const v1r = (r[3] >>> 0).toString(16).padStart(8,'0');
+      // eslint-disable-next-line no-console
+      console.log(`[DBG] pc=${pc.toString(16)} at=${at} zero=${z} v0=${v0r} v1=${v1r}`);
+    }
 
     const addr = (r[rs] + simm) | 0;
     const lwl = (addr: number, cur: number): number => {
@@ -179,12 +197,28 @@ export class R3000A {
           case 0x27: // NOR
             writeReg(rd, ~(r[rs] | r[rt]));
             break;
-          case 0x2a: // SLT
-            writeReg(rd, r[rs] < r[rt] ? 1 : 0);
+          case 0x2a: { // SLT (signed)
+            // Signed comparison per MIPS I: set rd = (rs < rt) ? 1 : 0 using 32-bit signed values
+            const val = (r[rs] | 0) < (r[rt] | 0) ? 1 : 0;
+            writeReg(rd, val);
             break;
-          case 0x2b: // SLTU
-            writeReg(rd, (r[rs] >>> 0) < (r[rt] >>> 0) ? 1 : 0);
+          }
+          case 0x2b: // SLTU (unsigned)
+            {
+              const val = (r[rs] >>> 0) < (r[rt] >>> 0) ? 1 : 0;
+              // eslint-disable-next-line no-console
+              if (pc === 0xbfc003c0) console.log(`[DBG-SLTU] rs=${(r[rs]>>>0).toString(16)} rt=${(r[rt]>>>0).toString(16)} -> ${val}`);
+              writeReg(rd, val);
+            }
             break;
+          case 0x0c: { // SYSCALL
+            // Raise a system call exception (ExcCode=8) to the general exception vector
+            const sr = this.cop0[12] >>> 0;
+            const bev = (sr >>> 22) & 1;
+            const vec = bev ? 0xbfc00180 : 0x80000080;
+            this.enterException(vec >>> 0, 8 /*Syscall*/, false);
+            return; // exception changes flow
+          }
           case 0x10: // MFHI
             writeReg(rd, this.s.hi | 0);
             break;

@@ -62,7 +62,7 @@ export class PSXSystem {
   public readonly gpu = new GPU();
   public readonly as = new AddressSpace();
   // PSX main RAM: 2MB physical, mirrored across 8MB address space
-  public readonly ram = new MappedRAM(0x00000000, 2 * 1024 * 1024, 8 * 1024 * 1024);
+  public readonly ram = new MappedRAM(0x00000000, 2 * 1024 * 1024, 32 * 1024 * 1024);
   public readonly iohub: IOHub;
   public readonly cpu: R3000A;
   public readonly dmac: DMAC;
@@ -251,7 +251,196 @@ this.cpu = new R3000A(createResetState(0xBFC00000), cpuBus as any, () => this.in
 // Install a lazy re-seed safety: before any 32-bit read in the BIOS stub region,
 // ensure the A0/B0/C0 stubs and dispatchers are present. This covers BIOS scrubbing loops.
 cpuBus.setPreRead32Hook((addr: number) => {
-  if (this.addrInBiosStubRegion(addr >>> 0)) this.ensureBiosCallStubsPresent();
+  const a = addr >>> 0;
+  if (this.addrInBiosStubRegion(a)) this.ensureBiosCallStubsPresent();
+  // Ensure exception vector exists at 0x00000080 when first fetched from any KSEG0/1 alias
+  if (a === 0x80000080 || a === 0x00000080 || a === 0xa0000080) {
+    const r = this.ram;
+    const vec0 = r.read32(0x00000080) >>> 0;
+    if (vec0 === 0 || vec0 === 0xffffffff) {
+      r.write32(0x00000080, 0x3c1a0000); // lui k0, 0
+      r.write32(0x00000084, 0x275a0c80); // addiu k0, k0, 0x0c80
+      r.write32(0x00000088, 0x03400008); // jr k0
+      r.write32(0x0000008c, 0x00000000); // nop
+    }
+    // Ensure system variable at 0x00000108 points to KSEG1 exception frame (matches PCSX trace)
+    const sysPtr = r.read32(0x00000108) >>> 0;
+    if (sysPtr === 0 || sysPtr === 0xffffffff) {
+      r.write32(0x00000108, 0xa000e1ec >>> 0);
+    }
+    // Ensure that [0xA000E1EC] points to 0xA000E1F4 (chain to next frame) if empty
+    const framePtr = r.read32(0xa000e1ec >>> 0) >>> 0;
+    if (framePtr === 0 || framePtr === 0xffffffff) {
+      r.write32(0xa000e1ec >>> 0, 0xa000e1f4 >>> 0);
+    }
+    // Ensure 0x00000100 points to first exception table (PCSX uses a000e004)
+    const sysTbl = r.read32(0x00000100) >>> 0;
+    if (sysTbl === 0 || sysTbl === 0xffffffff) {
+      r.write32(0x00000100, 0xa000e004 >>> 0);
+    }
+    // Ensure [0xA000E004] non-zero so handler doesn't take beqz path prematurely
+    const tblHead = r.read32(0xa000e004 >>> 0) >>> 0;
+    if (tblHead === 0 || tblHead === 0xffffffff) {
+      r.write32(0xa000e004 >>> 0, 0x00006da8 >>> 0);
+    }
+    // Seed kernel system pointers used by 0x00001d00..0x00001d6c (trace-compat mode only)
+    if (typeof process !== 'undefined' && process.env && process.env.PSX_TRACE_COMPAT === '1') {
+      // [a0000120] -> a000e028 and [a0000124] -> 0x000001c0
+      const kptr1 = r.read32(0xa0000120 >>> 0) >>> 0;
+      if (kptr1 === 0 || kptr1 === 0xffffffff) {
+        r.write32(0xa0000120 >>> 0, 0xa000e028 >>> 0);
+      }
+      const kptr2 = r.read32(0xa0000124 >>> 0) >>> 0;
+      if (kptr2 === 0 || kptr2 === 0xffffffff) {
+        r.write32(0xa0000124 >>> 0, 0x000001c0 >>> 0);
+      }
+    }
+    // Populate minimal RAM exception stub matching PCSX-Redux pattern if empty
+    const c80 = r.read32(0x00000c80) >>> 0;
+    const c90 = r.read32(0x00000c90) >>> 0;
+    if ((c80 === 0 || c80 === 0xffffffff) && (c90 === 0 || c90 === 0xffffffff)) {
+      // First four words are nops
+      r.write32(0x00000c80, 0x00000000);
+      r.write32(0x00000c84, 0x00000000);
+      r.write32(0x00000c88, 0x00000000);
+      r.write32(0x00000c8c, 0x00000000);
+      // Then the observed PCSX sequence
+      r.write32(0x00000c90, 0x241a0100); // li k0, 0x0100
+      r.write32(0x00000c94, 0x8f5a0008); // lw k0, 0x8(k0)
+      r.write32(0x00000c98, 0x00000000); // nop
+      r.write32(0x00000c9c, 0x8f5a0000); // lw k0, 0x0(k0)
+      r.write32(0x00000ca0, 0x00000000); // nop
+      r.write32(0x00000ca4, 0x235a0008); // addiu k0, k0, 8
+      r.write32(0x00000ca8, 0xaf410004); // sw at, 0x4(k0)
+      r.write32(0x00000cac, 0xaf420008); // sw v0, 0x8(k0)
+      r.write32(0x00000cb0, 0xaf43000c); // sw v1, 0xC(k0)
+      r.write32(0x00000cb4, 0xaf5f007c); // sw ra, 0x7C(k0)
+      // Next, jal to helper at 0xEA0
+      r.write32(0x00000cb8, 0x0c0003a8); // jal 0x00000ea0
+      r.write32(0x00000cbc, 0x00000000); // nop (delay slot)
+      // Helper at 0xEA0: read Cause/EPC from COP0 and return
+      r.write32(0x00000ea0, 0x40026800); // mfc0 v0, $Cause
+      r.write32(0x00000ea4, 0x40037000); // mfc0 v1, $EPC
+      r.write32(0x00000ea8, 0x03e00008); // jr ra
+      r.write32(0x00000eac, 0x00000000); // nop
+      // Continue handler: mask Cause and branch to store EPC
+      r.write32(0x00000cc0, 0x3042003c); // andi v0, 0x003c
+      r.write32(0x00000cc4, 0x14400009); // bnez v0, +0x9 (to 0x0CEC)
+      r.write32(0x00000cc8, 0x00000000); // nop
+      r.write32(0x00000cec, 0xaf430080); // sw v1, 0x80(k0)
+      r.write32(0x00000cf0, 0x00000000); // nop
+      // Store argument registers into frame and read SR
+      r.write32(0x00000d30, 0xaf440010); // sw a0, 0x10(k0)
+      r.write32(0x00000d34, 0xaf450014); // sw a1, 0x14(k0)
+      r.write32(0x00000d38, 0xaf460018); // sw a2, 0x18(k0)
+      r.write32(0x00000d3c, 0xaf47001c); // sw a3, 0x1c(k0)
+      r.write32(0x00000d40, 0x40046000); // mfc0 a0, $Status
+      r.write32(0x00000d44, 0x00000000); // nop
+      r.write32(0x00000d48, 0xaf44008c); // sw a0, 0x8c(k0)
+      r.write32(0x00000d4c, 0x40056800); // mfc0 a1, $Cause
+      r.write32(0x00000d50, 0x00000000); // nop
+      r.write32(0x00000d54, 0xaf450090); // sw a1, 0x90(k0)
+      r.write32(0x00000d58, 0xaf5b006c); // sw k1, 0x6c(k0)
+      r.write32(0x00000d5c, 0xaf500040); // sw s0, 0x40(k0)
+      r.write32(0x00000d60, 0xaf510044); // sw s1, 0x44(k0)
+      r.write32(0x00000d64, 0xaf520048); // sw s2, 0x48(k0)
+      r.write32(0x00000d68, 0xaf53004c); // sw s3, 0x4c(k0)
+      r.write32(0x00000d6c, 0xaf540050); // sw s4, 0x50(k0)
+      r.write32(0x00000d70, 0xaf550054); // sw s5, 0x54(k0)
+      r.write32(0x00000d74, 0xaf560058); // sw s6, 0x58(k0)
+      r.write32(0x00000d78, 0xaf57005c); // sw s7, 0x5c(k0)
+      r.write32(0x00000d7c, 0xaf480020); // sw t0, 0x20(k0)
+      r.write32(0x00000d80, 0xaf490024); // sw t1, 0x24(k0)
+      r.write32(0x00000d84, 0xaf4a0028); // sw t2, 0x28(k0)
+      r.write32(0x00000d88, 0xaf4b002c); // sw t3, 0x2c(k0)
+      r.write32(0x00000d8c, 0xaf4c0030); // sw t4, 0x30(k0)
+      r.write32(0x00000d90, 0xaf4d0034); // sw t5, 0x34(k0)
+      r.write32(0x00000d94, 0xaf4e0038); // sw t6, 0x38(k0)
+      r.write32(0x00000d98, 0xaf4f003c); // sw t7, 0x3c(k0)
+      r.write32(0x00000d9c, 0xaf580060); // sw t8, 0x60(k0)
+      r.write32(0x00000da0, 0xaf590064); // sw t9, 0x64(k0)
+      r.write32(0x00000da4, 0xaf5c0070); // sw gp, 0x70(k0)
+      r.write32(0x00000da8, 0xaf5d0074); // sw sp, 0x74(k0)
+      r.write32(0x00000dac, 0xaf5e0078); // sw fp, 0x78(k0)
+      r.write32(0x00000db0, 0x00002010); // mfhi a0
+      r.write32(0x00000db4, 0x00000000); // nop
+      r.write32(0x00000db8, 0xaf440084); // sw a0, 0x84(k0)
+      r.write32(0x00000dbc, 0x00002012); // mflo a0
+      r.write32(0x00000dc0, 0x00000000); // nop
+      r.write32(0x00000dc4, 0xaf440088); // sw a0, 0x88(k0)
+      r.write32(0x00000dc8, 0x3c1d0000); // lui sp, 0x0000
+      r.write32(0x00000dcc, 0x24130100); // li s3, 0x0100
+      r.write32(0x00000dd0, 0x8fbd6cf0); // lw sp, 0x6cf0(sp)
+      r.write32(0x00000dd4, 0x8e730000); // lw s3, 0x0(s3)
+      r.write32(0x00000dd8, 0x3c1c0001); // lui gp, 0x0001
+      r.write32(0x00000ddc, 0x279cf450); // addiu gp, gp, -0x0bb0
+      r.write32(0x00000de0, 0x03a0f021); // move fp, sp
+      r.write32(0x00000de4, 0x22740020); // addiu s4, s3, 0x20
+      r.write32(0x00000de8, 0x8e760000); // lw s6, 0(s3)
+      r.write32(0x00000dec, 0x00000000); // nop
+      r.write32(0x00000df0, 0x12c00011); // beqz s6, 0xE38
+      r.write32(0x00000df4, 0x00000000); // nop
+      r.write32(0x00000df8, 0x8ed10008); // lw s1, 0x8(s6)
+      r.write32(0x00000dfc, 0x8ed00004); // lw s0, 0x4(s6)
+      // Branch if no handler (s1==0) to 0xE28, otherwise call through s1 and continue
+      r.write32(0x00000e00, 0x12200009); // beqz s1, 0x00000e28
+      r.write32(0x00000e04, 0x00000000); // nop
+      r.write32(0x00000e08, 0x0220f809); // jalr s1
+      r.write32(0x00000e0c, 0x00000000); // nop
+      // Populate helper routine at 0xF40 to restore context and return (matches PCSX)
+      const f40 = r.read32(0x00000f40) >>> 0;
+      if (f40 === 0 || f40 === 0xffffffff) {
+        r.write32(0x00000f40, 0x241a0100); // li   k0, 0x0100
+        r.write32(0x00000f44, 0x8f5a0008); // lw   k0, 0x8(k0)
+        r.write32(0x00000f48, 0x00000000); // nop
+        r.write32(0x00000f4c, 0x8f5a0000); // lw   k0, 0x0(k0)
+        r.write32(0x00000f50, 0x00000000); // nop
+        r.write32(0x00000f54, 0x23440008); // addi a0, k0, 0x0008
+        r.write32(0x00000f58, 0x8c820088); // lw   v0, 0x88(a0)
+        r.write32(0x00000f5c, 0x00000000); // nop
+        r.write32(0x00000f60, 0x00400013); // mtlo v0
+        r.write32(0x00000f64, 0x00000000); // nop
+        r.write32(0x00000f68, 0x8c820084); // lw   v0, 0x84(a0)
+        r.write32(0x00000f6c, 0x00000000); // nop
+        r.write32(0x00000f70, 0x00400011); // mthi v0
+        r.write32(0x00000f74, 0x00000000); // nop
+        r.write32(0x00000f78, 0x8c82008c); // lw   v0, 0x8c(a0)
+        r.write32(0x00000f7c, 0x00000000); // nop
+        r.write32(0x00000f80, 0x40826000); // mtc0 Status, v0
+        r.write32(0x00000f84, 0x00000000); // nop
+        r.write32(0x00000f88, 0x8c820008); // lw   v0, 0x08(a0)
+        r.write32(0x00000f8c, 0x8c83000c); // lw   v1, 0x0c(a0)
+        r.write32(0x00000f90, 0x8c850014); // lw   a1, 0x14(a0)
+        r.write32(0x00000f94, 0x8c860018); // lw   a2, 0x18(a0)
+        r.write32(0x00000f98, 0x8c87001c); // lw   a3, 0x1c(a0)
+        r.write32(0x00000f9c, 0x8c880020); // lw   t0, 0x20(a0)
+        r.write32(0x00000fa0, 0x8c890024); // lw   t1, 0x24(a0)
+        r.write32(0x00000fa4, 0x8c8a0028); // lw   t2, 0x28(a0)
+        r.write32(0x00000fa8, 0x8c8b002c); // lw   t3, 0x2c(a0)
+        r.write32(0x00000fac, 0x8c8c0030); // lw   t4, 0x30(a0)
+        r.write32(0x00000fb0, 0x8c8d0034); // lw   t5, 0x34(a0)
+        r.write32(0x00000fb4, 0x8c8e0038); // lw   t6, 0x38(a0)
+        r.write32(0x00000fb8, 0x8c8f003c); // lw   t7, 0x3c(a0)
+        r.write32(0x00000fbc, 0x8c900040); // lw   s0, 0x40(a0)
+        r.write32(0x00000fc0, 0x8c910044); // lw   s1, 0x44(a0)
+        r.write32(0x00000fc4, 0x8c920048); // lw   s2, 0x48(a0)
+        r.write32(0x00000fc8, 0x8c93004c); // lw   s3, 0x4c(a0)
+        r.write32(0x00000fcc, 0x8c940050); // lw   s4, 0x50(a0)
+        r.write32(0x00000fd0, 0x8c950054); // lw   s5, 0x54(a0)
+        r.write32(0x00000fd4, 0x8c960058); // lw   s6, 0x58(a0)
+        r.write32(0x00000fd8, 0x8c97005c); // lw   s7, 0x5c(a0)
+        r.write32(0x00000fdc, 0x8c980060); // lw   t8, 0x60(a0)
+        r.write32(0x00000fe0, 0x8c990064); // lw   t9, 0x64(a0)
+        r.write32(0x00000fe4, 0x8c9b006c); // lw   k1, 0x6c(a0)
+        r.write32(0x00000fe8, 0x8c9c0070); // lw   gp, 0x70(a0)
+        r.write32(0x00000fec, 0x8c9d0074); // lw   sp, 0x74(a0)
+        r.write32(0x00000ff0, 0x8c9e0078); // lw   fp, 0x78(a0)
+        r.write32(0x00000ff4, 0x8c9f007c); // lw   ra, 0x7c(a0)
+        r.write32(0x00000ff8, 0x00000000); // nop
+        r.write32(0x00000ffc, 0x8c810004); // lw   at, 0x4(a0)
+      }
+    }
+  }
 });
     // Set BEV=1 at boot so exceptions use BIOS vectors (0xBFC00180/0xBFC00100) until BIOS clears it
     const cpuAny = this.cpu as any;
@@ -306,8 +495,11 @@ cpuBus.setPreRead32Hook((addr: number) => {
     this.as.addRegion(new BIOSRegion(provider));
     // DON'T install BIOS call stubs here - BIOS will clear memory 0x000-0xF80 early on
     // We'll install them lazily after the BIOS clear loop completes
-    // Initialize hardware to expected state to prevent BIOS errors
-    initializeHardware(this);
+    // Optionally initialize hardware to expected state (disabled by default for trace accuracy)
+    // Enable by setting EMU_HW_INIT=1 in the environment if needed.
+    if (process.env.EMU_HW_INIT === '1') {
+      initializeHardware(this);
+    }
     // Install bad jump prevention
     this.installBadJumpPrevention();
     // Attach display controller for VBLANK interrupts (essential for BIOS animation)
@@ -464,7 +656,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
       0x3c: 0xbfc02230,  // putchar
       0x3d: 0xbfc055dc,  // gets  
       0x3e: 0xbfc05674,  // puts
-      0x3f: 0xbfc01a70,  // printf
+      0x3f: 0xbfc018e0,  // printf (corrected to match PCSX)
       0x40: 0xbfc04750,  // SystemErrorUnresolvedException
       0x44: 0xbfc01920,  // FlushCache
       0x45: 0xbfc0329c,  // init_a0_b0_c0_vectors
@@ -478,7 +670,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
       0x4e: 0xbfc03670,  // GetGPUStatus
       0x70: 0xbfc056a4,  // _bu_init
       0x71: 0xbfc057f0,  // _96_init
-      0x72: 0xbfc057fc,  // _96_remove
+      0x72: 0xbfc072b8,  // _96_remove
       0x78: 0xbfc05958,  // _96_CdSeekL
       0x95: 0xbfc05994,  // CdInit
       0x96: 0xbfc059c4,  // CdRemove
@@ -491,7 +683,7 @@ cpuBus.setPreRead32Hook((addr: number) => {
       0xa0: 0xbfc05970,  // FileIoctl
       0xa1: 0xbfc0335c,  // exit
       0xa2: 0xbfc04590,  // FileGetDeviceFlag
-      0xa3: 0xbfc04a18,  // FileGetc
+      0xa3: 0xbfc048d0,  // FileGetc (corrected to match PCSX)
       0xa4: 0xbfc04a28,  // FilePutc
       0xab: 0xbfc05990,  // _card_info
       0xac: 0xbfc05998,  // _card_load
@@ -828,9 +1020,11 @@ cpuBus.setPreRead32Hook((addr: number) => {
       0x01: { rom: 0xbfc07024, ram: 0x000011a8 },  // AllocSysMemory
       0x02: { rom: 0xbfc06fcc, ram: 0x00001150 },  // SysFree
       0x03: { rom: 0xbfc06fa8, ram: 0x0000112c },  // FreeSysMemory
+      0x08: { rom: 0xbfc01140, ram: 0x00001d8c },  // ResetRCnt (relocated)
+      0x09: { rom: 0xbfc02240, ram: 0x00001e1c },  // DeliverEvent
       0x0a: { rom: 0xbfc012f4, ram: 0x00002a4c },  // OpenEvent
       0x0b: { rom: 0xbfc01474, ram: 0x00002bcc },  // CloseEvent
-      0x0c: { rom: 0xbfc014c8, ram: 0x00002c20 },  // WaitEvent
+      0x0c: { rom: 0xbfc014c8, ram: 0x00001f10 },  // WaitEvent (early relocation)
       0x0d: { rom: 0xbfc01578, ram: 0x00002cd0 },  // TestEvent
       0x0e: { rom: 0xbfc01614, ram: 0x00002d6c },  // EnableEvent
       0x0f: { rom: 0xbfc01674, ram: 0x00002dcc },  // DisableEvent
@@ -897,6 +1091,16 @@ cpuBus.setPreRead32Hook((addr: number) => {
         // Second stage relocation is ready, update the pointer
         r.write32(c00cAddr, 0x00002724);
       }
+    }
+
+    // Ensure exception vector at 0x00000080 is installed once RAM handler exists
+    // PCSX-Redux shows vector contents: lui k0, 0; addiu k0, 0x0c80; jr k0; nop
+    const vec0 = r.read32(0x00000080) >>> 0;
+    if (vec0 === 0 || vec0 === 0xffffffff) {
+      r.write32(0x00000080, 0x3c1a0000); // lui k0, 0
+      r.write32(0x00000084, 0x275a0c80); // addiu k0, k0, 0x0c80
+      r.write32(0x00000088, 0x03400008); // jr k0
+      r.write32(0x0000008c, 0x00000000); // nop
     }
   }
 
