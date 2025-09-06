@@ -3,6 +3,8 @@ import { PSXSystem } from '@ai-psx/core';
 import type { CPUState } from '@ai-psx/cpu';
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
 // Accuracy test: compare our BIOS CPU trace against a reference log from PCSX-Redux.
 // Requirements at repo root:
@@ -63,10 +65,27 @@ const resolveReduxLogPath = (): string => {
   return p;
 };
 
-const readReferenceLines = (absPath: string): string[] => {
-  const text = fs.readFileSync(absPath, 'utf8');
-  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+$/, ''));
-  return lines.filter((l) => l.length > 0);
+// Stream the reference log and collect only CPU lines, starting at a given CPU-line index and limiting the count.
+// This avoids loading the entire log into memory or creating a giant string.
+const streamReferenceCpuSpecs = async (absPath: string, startLine1: number, maxCpuLines: number | null): Promise<TraceLineSpec[]> => {
+  const specs: TraceLineSpec[] = [];
+  const startIdx0 = Math.max(0, startLine1 - 1);
+  let cpuSeen = 0; // CPU lines encountered so far
+  const rl = readline.createInterface({ input: fs.createReadStream(absPath, { encoding: 'utf8' }) });
+  for await (const raw of rl) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line) continue;
+    const spec = buildLineSpec(line);
+    if (spec && spec.isCpuLine) {
+      // Count this CPU line
+      if (cpuSeen >= startIdx0) {
+        specs.push(spec);
+        if (maxCpuLines !== null && specs.length >= maxCpuLines) break;
+      }
+      cpuSeen++;
+    }
+  }
+  return specs;
 };
 
 // Register name mapping
@@ -220,10 +239,11 @@ const applyLineSpec = (spec: TraceLineSpec, rec: TraceRecord): string => {
   return out.join('');
 };
 
-const parseMaxLinesEnv = (): number | null => {
+const parseMaxLinesEnv = (): number => {
   const raw = process.env.BIOS_TRACE_MAX_LINES ?? '';
   const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  // Default cap to prevent OOM on huge reference logs
+  return Number.isFinite(n) && n > 0 ? n : 50000;
 };
 const parseStartLineEnv = (): number => {
   const raw = process.env.BIOS_TRACE_START_LINE ?? '';
@@ -241,21 +261,26 @@ const getMemOutPath = (): string | null => {
 };
 
 describe('Accuracy: PCSX-Redux BIOS CPU trace', () => {
-  it('matches pcsx-redux-bios.log', () => {
+  it('matches pcsx-redux-bios.log', async () => {
     const refPath = resolveReduxLogPath();
-    const allLines = readReferenceLines(refPath);
-    const specsRaw = allLines.map((l) => buildLineSpec(l));
-    const specs: TraceLineSpec[] = specsRaw.filter((s): s is TraceLineSpec => !!s);
-    const expectedCpuLines: string[] = specs.map((s) => s.original);
-    if (expectedCpuLines.length === 0) {
-      const preview = allLines.slice(0, 3).join('\n');
-      throw new Error(`No CPU lines recognized in pcsx-redux-bios.log. Please verify the format. First lines:\n${preview}`);
-    }
+
     const cap = parseMaxLinesEnv();
     const start1 = parseStartLineEnv();
-    const startIdx0 = Math.max(0, start1 - 1);
-    const slicedSpecs = expectedCpuLines.slice(startIdx0);
-    const count = cap ? Math.min(cap, slicedSpecs.length) : slicedSpecs.length;
+
+    // Stream just the CPU lines we need, starting at start1 and capping to cap if provided
+    const specs: TraceLineSpec[] = await streamReferenceCpuSpecs(refPath, start1, cap);
+    const expectedCpuLines: string[] = specs.map((s) => s.original);
+    if (expectedCpuLines.length === 0) {
+      // For preview, read first few physical file lines without loading the whole file
+      const previewLines: string[] = [];
+      const rl = readline.createInterface({ input: fs.createReadStream(refPath, { encoding: 'utf8' }) });
+      for await (const raw of rl) {
+        previewLines.push(raw);
+        if (previewLines.length >= 3) break;
+      }
+      const preview = previewLines.join('\n');
+      throw new Error(`No CPU lines recognized in pcsx-redux-bios.log. Please verify the format. First lines:\n${preview}`);
+    }
 
     const bios = readBiosBytes();
     const psx = new PSXSystem();
@@ -287,20 +312,19 @@ describe('Accuracy: PCSX-Redux BIOS CPU trace', () => {
       });
     }
 
-    // Warm-up: skip to startIdx0
-    for (let k = 0; k < startIdx0; k++) psx.cpu.step();
-    // Compare from startIdx0
-    for (let i = 0; i < count; i++) {
-      while (records.length < startIdx0 + i + 1) psx.cpu.step();
-      const rec = records[startIdx0 + i];
-      if (!rec) throw new Error(`Tracer did not record instruction ${startIdx0 + i} (0-based)`);
-      const line = applyLineSpec(specs[startIdx0 + i], rec);
+    // We streamed starting at start1, so no warm-up steps are needed here.
+    // Compare sequentially against the streamed CPU specs.
+    for (let i = 0; i < expectedCpuLines.length; i++) {
+      while (records.length < i + 1) psx.cpu.step();
+      const rec = records[i];
+      if (!rec) throw new Error(`Tracer did not record instruction ${i} (0-based)`);
+      const line = applyLineSpec(specs[i], rec);
       if (outPath) fs.appendFileSync(outPath, line + '\n', 'utf8');
       const pcHex = (rec.pc >>> 0).toString(16);
-      expect(line, `Line ${startIdx0 + i + 1} (pc=0x${pcHex}) mismatch`).toBe(slicedSpecs[i]);
+      expect(line, `Line ${i + 1} (pc=0x${pcHex}) mismatch`).toBe(expectedCpuLines[i]);
     }
 
-    expect(records.length).toBeGreaterThanOrEqual(startIdx0 + count);
+    expect(records.length).toBeGreaterThanOrEqual(expectedCpuLines.length);
   }, 60000);
 });
 

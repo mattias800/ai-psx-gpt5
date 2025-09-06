@@ -6,11 +6,13 @@
 import type { PSXSystem } from './psx.js';
 import type { MappedRAM } from './address-space.js';
 
+const EMU_DEBUG = (typeof process !== 'undefined' && process.env && process.env.EMU_DEBUG === '1');
+
 /**
  * Initialize kernel workspace that BIOS expects to be present
  */
 export function initializeKernelWorkspace(ram: MappedRAM): void {
-  console.log('[HW Init] Initializing kernel workspace...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing kernel workspace...');
   
   // Clear low memory to ensure no garbage data
   for (let addr = 0; addr < 0x10000; addr += 4) {
@@ -74,14 +76,14 @@ export function initializeKernelWorkspace(ram: MappedRAM): void {
     ram.write32(addr, 0);
   }
   
-  console.log('[HW Init] Kernel workspace initialized');
+  if (EMU_DEBUG) console.log('[HW Init] Kernel workspace initialized');
 }
 
 /**
  * Initialize memory card and controller port states
  */
 export function initializePortStates(system: PSXSystem): void {
-  console.log('[HW Init] Initializing port states...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing port states...');
   
   // Memory card and controller ports need to respond correctly
   // even when no devices are connected
@@ -98,17 +100,17 @@ export function initializePortStates(system: PSXSystem): void {
   ram.write32(0x1F000100, 0xFFFFFFFF); // Port 1: No controller
   ram.write32(0x1F000180, 0xFFFFFFFF); // Port 2: No controller
   
-  console.log('[HW Init] Port states initialized (no devices)');
+  if (EMU_DEBUG) console.log('[HW Init] Port states initialized (no devices)');
 }
 
 /**
  * Initialize CD-ROM to proper boot state
  */
 export function initializeCDROM(system: PSXSystem): void {
-  console.log('[HW Init] Initializing CD-ROM...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing CD-ROM...');
   
   if (!system.cd) {
-    console.warn('[HW Init] No CD-ROM controller found');
+    if (EMU_DEBUG) console.warn('[HW Init] No CD-ROM controller found');
     return;
   }
   
@@ -128,17 +130,17 @@ export function initializeCDROM(system: PSXSystem): void {
     cd.statusCode = 0x02; // Standby state
   }
   
-  console.log('[HW Init] CD-ROM initialized (disc present, not ready)');
+  if (EMU_DEBUG) console.log('[HW Init] CD-ROM initialized (disc present, not ready)');
 }
 
 /**
  * Initialize interrupt controller
  */
 export function initializeInterrupts(system: PSXSystem): void {
-  console.log('[HW Init] Initializing interrupt controller...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing interrupt controller...');
   
   if (!system.intc) {
-    console.warn('[HW Init] No interrupt controller found');
+    if (EMU_DEBUG) console.warn('[HW Init] No interrupt controller found');
     return;
   }
   
@@ -158,17 +160,17 @@ export function initializeInterrupts(system: PSXSystem): void {
   // Bit 10: PIO (disabled)
   system.intc.setMask(0x037F);
   
-  console.log('[HW Init] Interrupt controller initialized');
+  if (EMU_DEBUG) console.log('[HW Init] Interrupt controller initialized');
 }
 
 /**
  * Initialize DMA controller
  */
 export function initializeDMA(system: PSXSystem): void {
-  console.log('[HW Init] Initializing DMA controller...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing DMA controller...');
   
   if (!system.dmac) {
-    console.warn('[HW Init] No DMA controller found');
+    if (EMU_DEBUG) console.warn('[HW Init] No DMA controller found');
     return;
   }
   
@@ -188,14 +190,14 @@ export function initializeDMA(system: PSXSystem): void {
   // Clear DICR (DMA Interrupt Control Register)
   dmac.write32(0x1f8010f4, 0);
   
-  console.log('[HW Init] DMA controller initialized');
+  if (EMU_DEBUG) console.log('[HW Init] DMA controller initialized');
 }
 
 /**
  * Initialize timers to default state
  */
 export function initializeTimers(system: PSXSystem): void {
-  console.log('[HW Init] Initializing timers...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing timers...');
   
   // Timer 0 (pixel clock)
   if (system.timer0) {
@@ -218,17 +220,17 @@ export function initializeTimers(system: PSXSystem): void {
     system.timer2.writeCount(0);
   }
   
-  console.log('[HW Init] Timers initialized');
+  if (EMU_DEBUG) console.log('[HW Init] Timers initialized');
 }
 
 /**
  * Initialize SPU to default state
  */
 export function initializeSPU(system: PSXSystem): void {
-  console.log('[HW Init] Initializing SPU...');
+  if (EMU_DEBUG) console.log('[HW Init] Initializing SPU...');
   
   if (!system.spu) {
-    console.warn('[HW Init] No SPU found');
+    if (EMU_DEBUG) console.warn('[HW Init] No SPU found');
     return;
   }
   
@@ -246,14 +248,14 @@ export function initializeSPU(system: PSXSystem): void {
     spu.write16(0x1f801daa, 0xC000); // SPUCNT - enable SPU
   }
   
-  console.log('[HW Init] SPU initialized');
+  if (EMU_DEBUG) console.log('[HW Init] SPU initialized');
 }
 
 /**
  * Apply comprehensive hardware initialization
  */
 export function initializeHardware(system: PSXSystem): void {
-  console.log('[HW Init] Starting comprehensive hardware initialization...');
+  if (EMU_DEBUG) console.log('[HW Init] Starting comprehensive hardware initialization...');
   
   const ram = (system as any).ram as MappedRAM;
   
@@ -282,14 +284,14 @@ export function initializeHardware(system: PSXSystem): void {
     memctrl.set(0x1f801060, 0x00000b88); // RAM size
   }
   
-  console.log('[HW Init] Hardware initialization complete');
+  if (EMU_DEBUG) console.log('[HW Init] Hardware initialization complete');
 }
 
 /**
  * Hook to prevent the BIOS from entering error paths
  */
 export function installBIOSHooks(system: PSXSystem): void {
-  console.log('[HW Init] Installing BIOS hooks...');
+  if (EMU_DEBUG) console.log('[HW Init] Installing BIOS hooks...');
   
   const ram = (system as any).ram as MappedRAM;
   const originalRead32 = ram.read32.bind(ram);
@@ -315,5 +317,5 @@ export function installBIOSHooks(system: PSXSystem): void {
     return originalRead32(addr);
   };
   
-  console.log('[HW Init] BIOS hooks installed');
+  if (EMU_DEBUG) console.log('[HW Init] BIOS hooks installed');
 }

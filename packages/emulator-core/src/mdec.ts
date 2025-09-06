@@ -1,6 +1,8 @@
 import type { EventScheduler } from './timing.js';
 import type { GPU } from '@ai-psx/gpu';
 
+const EMU_DEBUG = (typeof process !== 'undefined' && process.env && process.env.EMU_DEBUG === '1');
+
 // MDEC (Motion Decoder) implementation with basic RLE decompression for PlayStation logo
 // The BIOS logo uses RLE-compressed data, not full MPEG-style DCT/IDCT
 export class MDEC {
@@ -121,7 +123,7 @@ export class MDEC {
       // For RLE logo: typically 256x256 pixels = 32768 words in RGB15 mode
       this.expectedWords = blockCount;
       
-      console.log(`MDEC: Decode command - blocks: ${blockCount}, RGB: ${this.outputRGB}, depth: ${this.outputDepth}`);
+      if (EMU_DEBUG) console.log(`MDEC: Decode command - blocks: ${blockCount}, RGB: ${this.outputRGB}, depth: ${this.outputDepth}`);
       
       // Start processing any buffered input
       this.processRLE();
@@ -130,12 +132,12 @@ export class MDEC {
       // Set quant table
       this.currentCommand = 2;
       // Next 64 bytes are quant table
-      console.log('MDEC: Set quant table command');
+      if (EMU_DEBUG) console.log('MDEC: Set quant table command');
       
     } else if (cmd === 3) {
       // Set scale table  
       this.currentCommand = 3;
-      console.log('MDEC: Set scale table command');
+      if (EMU_DEBUG) console.log('MDEC: Set scale table command');
     }
     
     this.updateStatus();

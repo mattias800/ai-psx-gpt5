@@ -28,7 +28,7 @@
     "chunks:run:nosnap": "PSX_FOLLOW_SPEC_PC=1 npx vitest -c vitest.generated.config.ts --run",
     "trace:compare": "node tools/trace-compare/bin/trace-compare.js",
     "trace:smoke:3m": "PSX_TRACE_COMPAT=1 PSX_TRACE_TWEAK_EPC=1 node tools/run-div-emu-vs-pcsx.mjs --no-mem-trace --max 3000000",
-    "trace:compare:stream": "PSX_TRACE_COMPAT=1 PSX_TRACE_TWEAK_EPC=1 node tools/compare-streaming.mjs --log pcsx-redux-bios.log"
+    "trace:compare:stream": "PSX_TRACE_COMPAT=1 PSX_TRACE_TWEAK_EPC=1 PSX_TRACE_COMPAT_OTC_CLEAR_CYCLES=${PSX_TRACE_COMPAT_OTC_CLEAR_CYCLES:-448} node tools/compare-streaming.mjs --log pcsx-redux-bios.log"
   },
   "workspaces": [
     "packages/*",

@@ -30,6 +30,13 @@ export class DisplayController {
   private onVBlank() {
     // Raise VBLANK IRQ
     this.intc.raise(IRQ.VBLANK);
+    // Optional debug log
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.PSX_VBLANK_LOG === '1') {
+        // eslint-disable-next-line no-console
+        console.log(`[VBLANK] t=${this.sch['now']}`);
+      }
+    } catch {}
     // Schedule next frame
     const frame = this.frameCycles();
     this.nextVBlankAt = this.sch['now'] + frame;

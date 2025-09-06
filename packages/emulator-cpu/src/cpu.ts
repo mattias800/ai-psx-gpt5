@@ -29,6 +29,9 @@ export interface CPUHost {
 
 import { GTE } from './gte.js';
 
+// Debug logging gate: enable extra CPU debug when EMU_DEBUG=1
+const EMU_DEBUG = (typeof process !== 'undefined' && process.env && process.env.EMU_DEBUG === '1');
+
 export class R3000A {
   private cop0 = new Int32Array(32);
   private gte = new GTE();
@@ -86,7 +89,7 @@ export class R3000A {
         if (pc >= 0x00000400 && pc <= 0x00000650 && (i === 3 || i === 8)) {
           const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
           // eslint-disable-next-line no-console
-          console.log(`[DBG-WREG] pc=${toHex(pc)} r${i}=${toHex(nv)} op=${toHex(op)} fn=${toHex(fn)} rs=${rs} rt=${rt} rd=${rd} sh=${sh}`);
+          if (EMU_DEBUG) console.log(`[DBG-WREG] pc=${toHex(pc)} r${i}=${toHex(nv)} op=${toHex(op)} fn=${toHex(fn)} rs=${rs} rt=${rt} rd=${rd} sh=${sh}`);
         }
       }
     };
@@ -101,7 +104,7 @@ export class R3000A {
       const v0r = (r[2] >>> 0).toString(16).padStart(8,'0');
       const v1r = (r[3] >>> 0).toString(16).padStart(8,'0');
       // eslint-disable-next-line no-console
-      console.log(`[DBG] pc=${pc.toString(16)} at=${at} zero=${z} v0=${v0r} v1=${v1r}`);
+      if (EMU_DEBUG) console.log(`[DBG] pc=${pc.toString(16)} at=${at} zero=${z} v0=${v0r} v1=${v1r}`);
     }
 
     const addr = (r[rs] + simm) | 0;
@@ -161,7 +164,7 @@ export class R3000A {
             if (pc === 0x000005e8) {
               const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
               // eslint-disable-next-line no-console
-              console.log(`[DBG-SLL] pc=${toHex(pc)} rt=${rt} before=${toHex(r[rt])} sh=${sh}`);
+              if (EMU_DEBUG) console.log(`[DBG-SLL] pc=${toHex(pc)} rt=${rt} before=${toHex(r[rt])} sh=${sh}`);
             }
             writeReg(rd, r[rt] << sh);
             break;
@@ -193,7 +196,7 @@ export class R3000A {
             if (pc === 0x000005ec) {
               const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
               // eslint-disable-next-line no-console
-              console.log(`[DBG-ADD] pc=${toHex(pc)} rs=${rs} rt=${rt} rsVal=${toHex(r[rs])} rtVal=${toHex(r[rt])}`);
+              if (EMU_DEBUG) console.log(`[DBG-ADD] pc=${toHex(pc)} rs=${rs} rt=${rt} rsVal=${toHex(r[rs])} rtVal=${toHex(r[rt])}`);
             }
             writeReg(rd, (r[rs] + r[rt]) | 0);
             break;
@@ -228,7 +231,7 @@ export class R3000A {
             {
               const val = (r[rs] >>> 0) < (r[rt] >>> 0) ? 1 : 0;
               // eslint-disable-next-line no-console
-              if (pc === 0xbfc003c0) console.log(`[DBG-SLTU] rs=${(r[rs]>>>0).toString(16)} rt=${(r[rt]>>>0).toString(16)} -> ${val}`);
+              if (EMU_DEBUG && pc === 0xbfc003c0) console.log(`[DBG-SLTU] rs=${(r[rs]>>>0).toString(16)} rt=${(r[rt]>>>0).toString(16)} -> ${val}`);
               writeReg(rd, val);
             }
             break;
@@ -358,7 +361,7 @@ export class R3000A {
           const istat = this.mem.read32(0x1f801070) >>> 0;
           const imask = this.mem.read32(0x1f801074) >>> 0;
           // eslint-disable-next-line no-console
-          console.log(`[DBG-BEQ] pc=${toHex(pc)} rs=${rs} rsVal=${toHex(rsVal)} rt=${rt} rtVal=${toHex(rtVal)} imm=${toHex(simm>>>0)} I_STAT=${toHex(istat)} I_MASK=${toHex(imask)} taken=${rsVal===rtVal}`);
+          if (EMU_DEBUG) console.log(`[DBG-BEQ] pc=${toHex(pc)} rs=${rs} rsVal=${toHex(rsVal)} rt=${rt} rtVal=${toHex(rtVal)} imm=${toHex(simm>>>0)} I_STAT=${toHex(istat)} I_MASK=${toHex(imask)} taken=${rsVal===rtVal}`);
         }
         if (r[rs] === r[rt]) this.s.nextPc = (this.s.pc + ((simm << 2) | 0)) >>> 0;
         break;
@@ -395,7 +398,7 @@ export class R3000A {
         if (pc === 0x8005abf8 || pc === 0x000000a4) {
           const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
           // eslint-disable-next-line no-console
-          console.log(`[DBG-ADDIU] pc=${toHex(pc)} rt=${rt} rs=${rs} rsVal=${toHex(r[rs])} imm=${toHex(simm>>>0)}`);
+          if (EMU_DEBUG) console.log(`[DBG-ADDIU] pc=${toHex(pc)} rt=${rt} rs=${rs} rsVal=${toHex(r[rs])} imm=${toHex(simm>>>0)}`);
         }
         writeReg(rt, (r[rs] + simm) | 0);
         break;
@@ -437,7 +440,7 @@ export class R3000A {
         if (pc === 0x8005a208 || pc === 0x8005a20c || pc === 0x8005a2e0 || pc === 0x8005a2e4) {
           const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
           // eslint-disable-next-line no-console
-          console.log(`[DBG-LHU] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)} rt=${rt}`);
+          if (EMU_DEBUG) console.log(`[DBG-LHU] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)} rt=${rt}`);
         }
         writeReg(rt, v >>> 0);
         break;
@@ -448,7 +451,7 @@ export class R3000A {
         if (pc === 0x000005f0) {
           const toHex = (x: number, w=8) => (x >>> 0).toString(16).padStart(w, '0');
           // eslint-disable-next-line no-console
-          console.log(`[DBG-LW] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)}`);
+          if (EMU_DEBUG) console.log(`[DBG-LW] pc=${toHex(pc)} rs=${rs} base=${toHex(r[rs])} simm=${toHex(simm>>>0)} addr=${toHex(addr>>>0)} val=${toHex(v)}`);
         }
         writeReg(rt, v | 0);
         break;
@@ -479,19 +482,41 @@ export class R3000A {
         break;
     }
     // After executing the instruction (including any delay slot), handle pending interrupts.
-    if (this.intPending && this.intPending()) {
-      const sr = this.cop0[12] >>> 0;
-      const IEc = sr & 1;
-      if (IEc) {
-        // Respect BEV (SR bit 22): when set, use boot vectors in KSEG1 (0xBFC00180), otherwise KSEG0 (0x80000080)
-        const bev = (sr >>> 22) & 1;
-        const vec = bev ? 0xbfc00180 : 0x80000080;
-        this.enterException(vec >>> 0, 0 /*Int*/);
-        this.s.cycles += 1; // cost for exception entry
-        this.s.regs[0] = 0; // enforce r0
-        return;
-      }
+    // Update COP0.Cause.IP bits to reflect external interrupt lines (PSX combines INTC -> MIPS IP2).
+    // Use the host intPending() to indicate whether INTC has any masked pending IRQs.
+    const hadPending = this.intPending ? !!this.intPending() : false;
+    const oldCause = this.cop0[13] >>> 0;
+    const IP2_BIT = 1 << 10; // MIPS hardware interrupt line 0 maps to IP2
+    const newCause = hadPending ? (oldCause | IP2_BIT) >>> 0 : (oldCause & ~IP2_BIT) >>> 0;
+    this.cop0[13] = newCause | 0;
+
+    // Focused debug: log interrupt gating state exactly at BIOS poll boundary
+    if (pc === 0x80059e10 && EMU_DEBUG) {
+      const srDbg = this.cop0[12] >>> 0;
+      const istat = this.mem.read32(0x1f801070) >>> 0;
+      const imask = this.mem.read32(0x1f801074) >>> 0;
+      const im = (srDbg >>> 8) & 0xff;
+      const ip = (this.cop0[13] >>> 8) & 0xff;
+      const gate = ((im & ip) !== 0) && ((srDbg & 1) !== 0);
+      // eslint-disable-next-line no-console
+      console.log(`[DBG-INT] at 80059e10: IEc=${srDbg & 1} BEV=${(srDbg>>>22)&1} SR=${(srDbg>>>0).toString(16)} I_STAT=${istat.toString(16)} I_MASK=${imask.toString(16)} IP=${ip.toString(16)} IM=${im.toString(16)} gate=${gate} pending=${hadPending}`);
     }
+
+    // Spec-correct gating: take interrupt only if IEc=1 and (IM & IP) != 0
+    const sr = this.cop0[12] >>> 0;
+    const IEc = sr & 1;
+    const im = (sr >>> 8) & 0xff;
+    const ip = (this.cop0[13] >>> 8) & 0xff;
+    if (IEc && ((im & ip) !== 0)) {
+      // Respect BEV (SR bit 22): when set, use boot vectors in KSEG1 (0xBFC00180), otherwise KSEG0 (0x80000080)
+      const bev = (sr >>> 22) & 1;
+      const vec = bev ? 0xbfc00180 : 0x80000080;
+      this.enterException(vec >>> 0, 0 /*Int*/);
+      this.s.cycles += 1; // cost for exception entry
+      this.s.regs[0] = 0; // enforce r0
+      return;
+    }
+
     this.s.regs[0] = 0; // enforce r0
     this.s.cycles += 1; // placeholder timing
   }

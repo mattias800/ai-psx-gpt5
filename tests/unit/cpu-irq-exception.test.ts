@@ -32,7 +32,7 @@ describe('CPU interrupts and exception entry', () => {
     const mem = new TestMem();
     // Program: ORI r1, r0, 1; MTC0 r1, SR(12); (just enabling IE)
     const code = emit([
-      ORI(0,1,0x0001),
+      ORI(0,1,0x0401), // IEc=1 and IM2=1 (enable external IRQ line)
       MTC0(1,12),
     ]);
     mem.buf.set(code, 0);
@@ -53,7 +53,7 @@ describe('CPU interrupts and exception entry', () => {
     const pcBefore = cpu.s.pc >>> 0;
     cpu.step();
     expect(cpu.s.pc >>> 0).toBe(0x80000080);
-    expect(cpu['cop0'][14] >>> 0).toBe(pcBefore >>> 0); // EPC
+    expect(cpu['cop0'][14] >>> 0).toBe(((pcBefore + 4) >>> 0)); // EPC points to instruction after the one just executed
     expect((cpu['cop0'][12] & 0x3f) >>> 0).toBe(0x04); // rotated mode bits
   });
 });

@@ -41,6 +41,8 @@ export class DMAC {
   private spu?: SPUDMA;
   private cdrom?: CDROMDMA;
   private mdec?: { dmaIn(words: Uint32Array): void; dmaOut(countWords: number): Uint32Array };
+  // Scheduled deferred START clears for gated channels (by channel index), 0 means none
+  private gatedStartClearId: number[] = [0,0,0,0,0,0,0];
 
   constructor(private bus: Bus, private gpu: GPURegs, private intc?: InterruptController, private sch?: EventScheduler, private cyclesPerWord: number = 0) {}
 
@@ -91,12 +93,38 @@ export class DMAC {
         case 0x4: c.bcr = v >>> 0; break;
         case 0x8:
           c.chcr = v >>> 0;
-          if ((v & (1 << 24)) !== 0) this.runChannel(ch);
+          if ((v & (1 << 24)) !== 0) {
+            // If channel START is set while DPCR gating is off, schedule a deferred clear to
+            // emulate PCSX BIOS polling window before START drops.
+            const dpcrEnabled = (this.dpcr & (1 << ch)) !== 0;
+            if (!dpcrEnabled && ch === 6 && this.sch) {
+              // Cancel prior scheduled clear if any and schedule a new one after a compat-tunable delay
+              if (this.gatedStartClearId[ch]) { this.sch.cancel(this.gatedStartClearId[ch]); this.gatedStartClearId[ch] = 0; }
+              let delay = 512;
+              try {
+                const raw = (typeof process !== 'undefined' && process.env) ? (process.env.PSX_TRACE_COMPAT_OTC_CLEAR_CYCLES || '') : '';
+                const v = Number.parseInt(raw, 10);
+                if (Number.isFinite(v) && v > 0) delay = v | 0;
+              } catch {}
+              this.gatedStartClearId[ch] = this.sch.schedule(delay, () => { c.chcr &= ~(1 << 24); this.gatedStartClearId[ch] = 0; });
+            }
+            this.runChannel(ch);
+          }
           break;
       }
       return;
     }
-    if (a === 0x1f8010f0) { this.dpcr = v >>> 0; return; }
+    if (a === 0x1f8010f0) { 
+      this.dpcr = v >>> 0; 
+      // If any channels were previously triggered (CHCR.START=1) while gated, start them now
+      for (let ch = 0; ch < 7; ch++) {
+        const c = this.channels[ch];
+        if ((c.chcr & (1 << 24)) !== 0 && (this.dpcr & (1 << ch)) !== 0) {
+          this.runChannel(ch);
+        }
+      }
+      return; 
+    }
     if (a === 0x1f8010f4) {
       // DICR write: update enables (bits0..6) and master enable (bit24),
       // clear per-channel flags (bits16..22) and master flag (bit23) when written as 1
@@ -121,10 +149,9 @@ export class DMAC {
     let performed = false;
 
     // DPCR gating: require channel enabled to perform any transfer
+    // When gated, preserve CHCR.START so software can poll and later enable DPCR to start the transfer.
     const dpcrEnabled = (this.dpcr & (1 << ch)) !== 0;
     if (!dpcrEnabled) {
-      // Clear start/trigger bit without performing
-      c.chcr &= ~(1 << 24);
       return;
     }
 
@@ -136,8 +163,7 @@ export class DMAC {
 
     const tryStartAsync = (words: number, work: () => void): boolean => {
       if (!(this.sch && this.cyclesPerWord > 0 && words > 0)) return false;
-      // Clear start bit immediately
-      c.chcr &= ~(1 << 24);
+      // In async mode, leave the start bit set until the transfer completes
       const enqueue = () => { this.pending.push({ ch, words, work }); };
       if (this.activeCh !== -1) { enqueue(); return true; }
       // Start now
@@ -146,6 +172,8 @@ export class DMAC {
       const total = this.computeTotalCycles(words);
       this.sch!.schedule(total, () => {
         try { work(); } finally {
+          // Clear start and busy bits on completion
+          c.chcr &= ~(1 << 24);
           c.chcr &= ~(1 << 28);
           this.raiseIrqIfEnabled(ch);
           this.activeCh = -1;
@@ -290,8 +318,10 @@ export class DMAC {
       case 6: // OTC
         if (!dirFromMem && sync === 0) {
           const words = c.bcr & 0xffff;
-          if (tryStartAsync(words, () => this.otcBuild(c))) return;
-          doWithBusy(() => this.otcBuild(c)); performed = true;
+          // PCSX/BIOS expect OTC to complete effectively immediately; perform synchronously
+          // regardless of async timing configuration so that CHCR.START clears by the next poll.
+          doWithBusy(() => this.otcBuild(c));
+          performed = true;
         }
         break;
       default:

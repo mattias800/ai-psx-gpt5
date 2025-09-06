@@ -185,10 +185,28 @@ export class IOHub implements MemoryRegion {
     }
     switch (p) {
       // INTC
-      case 0x1f801070:
-        return (this.devs.intc?.readStatus() ?? 0) >>> 0; // I_STAT
-      case 0x1f801074:
-        return (this.devs.intc?.readMask() ?? 0) >>> 0; // I_MASK
+      case 0x1f801070: {
+        const v = (this.devs.intc?.readStatus() ?? 0) >>> 0; // I_STAT
+        try {
+          if (typeof process !== 'undefined' && process.env && process.env.PSX_INT_LOG === '1') {
+            const hex = (x: number) => (x >>> 0).toString(16).padStart(8,'0');
+            // eslint-disable-next-line no-console
+            console.log(`[INTC] read I_STAT=${hex(v)}`);
+          }
+        } catch {}
+        return v >>> 0;
+      }
+      case 0x1f801074: {
+        const v = (this.devs.intc?.readMask() ?? 0) >>> 0; // I_MASK
+        try {
+          if (typeof process !== 'undefined' && process.env && process.env.PSX_INT_LOG === '1') {
+            const hex = (x: number) => (x >>> 0).toString(16).padStart(8,'0');
+            // eslint-disable-next-line no-console
+            console.log(`[INTC] read I_MASK=${hex(v)}`);
+          }
+        } catch {}
+        return v >>> 0;
+      }
       // Timers 0..2: COUNT, MODE, TARGET
       case 0x1f801100:
         return t ? t[0].readCount() & 0xffff : 0;
@@ -258,6 +276,17 @@ export class IOHub implements MemoryRegion {
       this.devs.spu?.write16(p, v & 0xffff);
       return;
     }
+    // INTC 16-bit semantics for I_STAT (0x1f801070) and I_MASK (0x1f801074)
+    if (p === 0x1f801070) { // I_STAT: write-1-to-clear
+      this.devs.intc?.ackMask(v & 0xffff);
+      return;
+    }
+    if (p === 0x1f801074) { // I_MASK: lower 16 bits are meaningful
+      const cur = (this.devs.intc?.readMask() ?? 0) >>> 0;
+      const nv = ((cur & ~0xffff) | (v & 0xffff)) >>> 0;
+      this.devs.intc?.writeMask(nv >>> 0);
+      return;
+    }
     // SIO: split into two byte writes
     if (p >= 0x1f801040 && p <= 0x1f80105f) {
       this.devs.sio?.write8(p, v & 0xff);
@@ -309,12 +338,28 @@ export class IOHub implements MemoryRegion {
     }
     switch (p) {
       // INTC
-      case 0x1f801070:
+      case 0x1f801070: {
         this.devs.intc?.ackMask(v >>> 0);
+        try {
+          if (typeof process !== 'undefined' && process.env && process.env.PSX_INT_LOG === '1') {
+            const hex = (x: number) => (x >>> 0).toString(16).padStart(8,'0');
+            // eslint-disable-next-line no-console
+            console.log(`[INTC] ack I_STAT mask=${hex(v>>>0)}`);
+          }
+        } catch {}
         break; // I_STAT
-      case 0x1f801074:
+      }
+      case 0x1f801074: {
         this.devs.intc?.writeMask(v >>> 0);
+        try {
+          if (typeof process !== 'undefined' && process.env && process.env.PSX_INT_LOG === '1') {
+            const hex = (x: number) => (x >>> 0).toString(16).padStart(8,'0');
+            // eslint-disable-next-line no-console
+            console.log(`[INTC] write I_MASK=${hex(v>>>0)}`);
+          }
+        } catch {}
         break; // I_MASK
+      }
       // Timers 0..2: COUNT, MODE, TARGET
       case 0x1f801100:
         if (t) t[0].writeCount(v);

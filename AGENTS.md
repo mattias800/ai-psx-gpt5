@@ -12,3 +12,6 @@ CI gates
 - Coverage: target >= 90% for core packages
 - E2E: optional unless BIOS/game secrets provided
 
+Logs
+- PCSX BIOS CPU trace (pcsx-redux-bios.log) should be versioned in git so the CPU trace comparison tools can run on machines without PCSX-Redux installed.
+- Keep logs deterministic and in a stable format; update them only when emulator changes cause intended differences, and adjust tests accordingly.

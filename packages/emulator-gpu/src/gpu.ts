@@ -6,6 +6,31 @@ export class GPU {
   // Many references report GPUSTAT initializes to 0x1c000000 on PS1 hardware.
   // Use that canonical value to better match BIOS expectations.
   status = 0x1c000000;
+
+  // Optional IRQ hooks (provided by core to integrate with INTC)
+  private onRaiseIRQ?: () => void;
+  private onAckIRQ?: () => void;
+
+  // Bit mask for GPUSTAT IRQ flag (bit 24)
+  private static readonly IRQ_BIT = (1 << 24) >>> 0;
+  
+  // Allow core to attach IRQ callbacks (no dependency on INTC here)
+  attachIRQ(handlers: { raise?: () => void; ack?: () => void }): void {
+    this.onRaiseIRQ = handlers.raise;
+    this.onAckIRQ = handlers.ack;
+  }
+
+  // Raise GPU IRQ: set GPUSTAT bit 24 and notify core
+  private raiseIRQ(): void {
+    this.status = (this.status | GPU.IRQ_BIT) >>> 0;
+    if (this.onRaiseIRQ) this.onRaiseIRQ();
+  }
+
+  // Acknowledge GPU IRQ: clear GPUSTAT bit 24 and notify core
+  private ackIRQ(): void {
+    this.status = (this.status & ~GPU.IRQ_BIT) >>> 0;
+    if (this.onAckIRQ) this.onAckIRQ();
+  }
   
   // Get VRAM contents for frame capture
   getVRAM(): Uint16Array {
@@ -210,6 +235,12 @@ export class GPU {
     switch (op) {
       case 0x00: // Reset GPU
         this.reset();
+        break;
+      case 0x02: // Acknowledge IRQ
+        this.ackIRQ();
+        break;
+      case 0x1f: // Request IRQ (IRQ1) - raise immediately
+        this.raiseIRQ();
         break;
       case 0x04: { // DMA direction
         const dir = val & 0x3;
